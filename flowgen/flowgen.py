@@ -2,18 +2,37 @@
 """flowgen - generate EDA run directories from a Tcl block config.
 
 Usage:
-    flowgen.py block.config.tcl
+    flowgen.py [--force] CONFIG
+    flowgen.py -h
 
-Creates ./<yyyy_mm_dd_hh_mm_ss>_<TOP_DESIGN>_formality/ in the current
-directory with one run script per flow (run_<flow>.csh) and one
-sub-directory per flow holding the generated Formality Tcl script.
-Nothing is launched; run the scripts manually.
+Arguments:
+    CONFIG    The block config file to read, typically block.config.tcl
+              (any name works). Usually given through the configs link
+              directory, e.g. configs/block.config.tcl.
+    --force   Generate the run directory even if input files are missing
+              or a .f file list cannot be read. Those errors become
+              warnings. Use it to try out the flow before all design files
+              exist. Other config errors (missing settings, bad values,
+              Tcl errors) still stop generation.
+    -h        Show this help and exit.
 
-The config is plain Tcl, evaluated by a real Tcl interpreter (tkinter).
-Values are written in double quotes, lists in braces with one double-quoted
-item per line; $VARIABLES inside list items are expanded by flowgen.
-Relative paths are relative to the config file's real directory.
-See configs/block_template.config.tcl for every supported variable.
+Examples:
+    flowgen.py configs/block.config.tcl
+    flowgen.py --force configs/block.config.tcl
+
+Output:
+    ./<yyyy_mm_dd_hh_mm_ss>_<TOP_DESIGN>_formality/ in the current directory,
+    with one run script per flow (run_<flow>.csh) and one sub-directory per
+    flow holding the generated Formality Tcl script. Nothing is launched;
+    run the scripts manually. An existing directory of the same name is
+    overwritten.
+
+Config:
+    Plain Tcl, evaluated by a real Tcl interpreter (tkinter). Values are
+    written in double quotes, lists in braces with one double-quoted item
+    per line; $VARIABLES inside list items are expanded by flowgen.
+    Relative paths are relative to the config file's real directory.
+    See configs/block_template.config.tcl for every supported setting.
 
 Requires Python 3.6+ built with tkinter. Standard library only.
 """
@@ -106,7 +125,9 @@ class FileSet(object):
 class Config(object):
     """Typed, validated view of the block config. Collects all problems."""
 
-    def __init__(self, path):
+    def __init__(self, path, force=False):
+        self.force = force
+        self.forced = []      # file errors downgraded to warnings by --force
         self.path = os.path.realpath(path)   # follow flowgen/configs links to common_files
         self.dir = os.path.dirname(self.path)
         self.errors = []
@@ -173,6 +194,14 @@ class Config(object):
         for key in self.env_setenv:
             if not IDENT_RE.match(key):
                 self.errors.append("ENV_SETENV(%s): not a valid environment variable name" % key)
+
+    def file_error(self, msg):
+        """An error caused by a missing or unreadable input file."""
+        if self.force:
+            self.forced.append(msg)
+            self.warnings.append("%s (ignored: --force)" % msg)
+        else:
+            self.errors.append(msg)
 
     # Typed getters
 
@@ -265,7 +294,7 @@ class Config(object):
             self.warnings.append("%s: +incdir+/+define+ in a .f file ignored for netlists" % name)
             result.incdirs, result.defines = [], []
         if required and items and not result.files:
-            self.errors.append("%s: the .f file lists contain no files" % name)
+            self.file_error("%s: the .f file lists contain no files" % name)
         return result
 
     def read_filelist(self, name, path, result, stack):
@@ -283,7 +312,7 @@ class Config(object):
             with open(path) as fh:
                 lines = fh.readlines()
         except (IOError, OSError) as exc:
-            self.errors.append("%s: cannot read file list: %s" % (label, exc))
+            self.file_error("%s: cannot read file list: %s" % (label, exc))
             return
         base = os.path.dirname(path)
         for lineno, line in enumerate(lines, 1):
@@ -339,6 +368,8 @@ def tcl_word(text):
 
 def tcl_list_block(items, indent="    "):
     """A braced, one-item-per-line Tcl list."""
+    if not items:
+        return "{}"
     return "{\n%s\n}" % "\n".join(indent + tcl_word(i) for i in items)
 
 
@@ -379,6 +410,11 @@ def gen_fm_rtl2syn(cfg, flow, stamp):
         "# Block     : %s" % cfg.top,
         "# Generated : %s by flowgen.py from %s" % (stamp, cfg.path),
         "# Run       : ../run_%s.csh   (do not edit; regenerate instead)" % flow,
+    ]
+    if cfg.forced:
+        lines.append("# WARNING   : generated with --force; these input problems were ignored:")
+        lines += ["#   " + msg for msg in cfg.forced]
+    lines += [
         "",
         "set FLOW       %s" % tcl_word(flow),
         "set TOP_DESIGN %s" % tcl_word(cfg.top),
@@ -514,15 +550,19 @@ def write_file(path, text, executable=False):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Generate a Formality run directory from a Tcl block config.")
-    parser.add_argument("config", help="block config file, typically block.config.tcl")
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("config", metavar="CONFIG",
+                        help="block config file, typically block.config.tcl")
+    parser.add_argument("--force", action="store_true",
+                        help="generate even if input files are missing or a .f file "
+                             "list cannot be read (those errors become warnings)")
     args = parser.parse_args(argv)
 
     if not os.path.isfile(args.config):
         sys.exit("flowgen: ERROR: config file not found: %s" % args.config)
 
     try:
-        cfg = Config(args.config)
+        cfg = Config(args.config, force=args.force)
     except ConfigError as exc:
         sys.exit("flowgen: ERROR: %s" % exc)
 
@@ -531,7 +571,11 @@ def main(argv=None):
     if cfg.errors:
         for msg in cfg.errors:
             print("flowgen: ERROR: %s" % msg)
-        sys.exit("flowgen: %d error(s) in %s; nothing generated." % (len(cfg.errors), cfg.path))
+        hint = ""
+        if not args.force and any("file list" in m for m in cfg.errors):
+            hint = " Use --force to generate anyway with missing files."
+        sys.exit("flowgen: %d error(s) in %s; nothing generated.%s"
+                 % (len(cfg.errors), cfg.path, hint))
 
     now = datetime.datetime.now()
     stamp = now.strftime("%Y-%m-%d %H:%M:%S")
@@ -561,6 +605,9 @@ def main(argv=None):
         write_file(os.path.join(run_dir, "run_%s.csh" % flow), run_csh, executable=True)
 
     print("flowgen: generated %s" % run_dir)
+    if cfg.forced:
+        print("flowgen: WARNING: generated with --force; %d input problem(s) ignored "
+              "(listed in the script headers)" % len(cfg.forced))
     for flow in cfg.flows:
         print("flowgen:   %-10s run with: %s" % (flow, os.path.join(run_dir, "run_%s.csh" % flow)))
     return 0
