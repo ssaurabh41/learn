@@ -31,7 +31,7 @@ The log goes to `rtl2syn/rtl2syn.log`, the reports to `rtl2syn/reports/`, and th
 
 ## Config
 
-The config is plain Tcl. Start from `block_template.config.tcl`, which explains every setting with examples. The usual name is `block.config.tcl`, but any name works.
+The config is plain Tcl. Start from `configs/block_template.config.tcl`, which explains every setting with examples. The usual name is `block.config.tcl`, but any name works.
 
 - Single values go in double quotes: `set TOP_DESIGN "block"`.
 - Lists go in braces, one double-quoted item per line. flowgen expands `$VARIABLES` inside list items.

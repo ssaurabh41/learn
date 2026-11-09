@@ -13,7 +13,7 @@ The config is plain Tcl, evaluated by a real Tcl interpreter (tkinter).
 Values are written in double quotes, lists in braces with one double-quoted
 item per line; $VARIABLES inside list items are expanded by flowgen.
 Relative paths are relative to the config file's real directory.
-See block_template.config.tcl for every supported variable.
+See configs/block_template.config.tcl for every supported variable.
 
 Requires Python 3.6+ built with tkinter. Standard library only.
 """

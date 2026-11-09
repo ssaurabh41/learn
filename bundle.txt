@@ -1,5 +1,5 @@
 #@@PACK 3
-#@@FILE flowgen/README.md mode=644 enc=text lines=63 eol=1 md5=23ed45234e0777e3b1908fcb68c1a1b6
+#@@FILE flowgen/README.md mode=644 enc=text lines=63 eol=1 md5=ebc617dcdc2eae846d0d7666a0981971
 # flowgen
 
 Generates EDA run directories from one Tcl block config. Python 3.6+ (with tkinter), standard library only.
@@ -33,7 +33,7 @@ The log goes to `rtl2syn/rtl2syn.log`, the reports to `rtl2syn/reports/`, and th
 
 ## Config
 
-The config is plain Tcl. Start from `block_template.config.tcl`, which explains every setting with examples. The usual name is `block.config.tcl`, but any name works.
+The config is plain Tcl. Start from `configs/block_template.config.tcl`, which explains every setting with examples. The usual name is `block.config.tcl`, but any name works.
 
 - Single values go in double quotes: `set TOP_DESIGN "block"`.
 - Lists go in braces, one double-quoted item per line. flowgen expands `$VARIABLES` inside list items.
@@ -64,7 +64,7 @@ Block configs live in the top-level `common_files/` directory. `unpack.py` creat
 | `ENV_SOURCE` | | cshrc files sourced by the run script |
 | `ENV_SETENV(NAME)` | | environment variables set by the run script |
 #@@END flowgen/README.md
-#@@FILE flowgen/block_template.config.tcl mode=644 enc=text lines=195 eol=1 md5=e4efa20f650aeebf025703e01eeeb9d9
+#@@FILE flowgen/configs/block_template.config.tcl mode=644 enc=text lines=195 eol=1 md5=e4efa20f650aeebf025703e01eeeb9d9
 # Block configuration template for flowgen.py
 #
 # This file lists every setting flowgen understands. Copy it to your golden
@@ -260,8 +260,8 @@ set ENV_SOURCE {
 # Environment variables to set, one line each. Optional.
 # Example: set ENV_SETENV(SNPSLMD_LICENSE_FILE) "27020@lic-server1"
 set ENV_SETENV(SNPSLMD_LICENSE_FILE) "27020@lic-server1"
-#@@END flowgen/block_template.config.tcl
-#@@FILE flowgen/flowgen.py mode=755 enc=text lines=570 eol=1 md5=2e37c03222af6bde59eb52e5b16c0bfe
+#@@END flowgen/configs/block_template.config.tcl
+#@@FILE flowgen/flowgen.py mode=755 enc=text lines=570 eol=1 md5=b7050c568543cb116282afe38cf8441b
 #!/usr/bin/env python3
 """flowgen - generate EDA run directories from a Tcl block config.
 
@@ -277,7 +277,7 @@ The config is plain Tcl, evaluated by a real Tcl interpreter (tkinter).
 Values are written in double quotes, lists in braces with one double-quoted
 item per line; $VARIABLES inside list items are expanded by flowgen.
 Relative paths are relative to the config file's real directory.
-See block_template.config.tcl for every supported variable.
+See configs/block_template.config.tcl for every supported variable.
 
 Requires Python 3.6+ built with tkinter. Standard library only.
 """
@@ -950,7 +950,7 @@ def main(argv=None):
 if __name__ == "__main__":
     sys.exit(main())
 #@@END pack.py
-#@@FILE unpack.py mode=755 enc=text lines=168 eol=1 md5=9218b914c499a5275efc984cb60c56d8
+#@@FILE unpack.py mode=755 enc=text lines=176 eol=1 md5=d46a333114c99e7d7d9f45e80a478130
 #!/usr/bin/env python3
 """unpack - recreate files from a bundle made by pack.py.
 
@@ -958,8 +958,9 @@ Usage:
     unpack.py BUNDLE [-d DIR] [--force] [--list]
 
 Files are written under DIR (default: current directory). Then the
-directory flowgen/configs/ is created, holding one link per file in your
-local DIR/common_files/ (the golden block configs):
+directory flowgen/configs/ (which holds block_template.config.tcl from the
+bundle) gets one link per file in your local DIR/common_files/ (the golden
+block configs):
     flowgen/configs/<name> -> ../../common_files/<name>
 Re-run unpack (with --force) to pick up configs added to common_files/ later.
 
@@ -1064,9 +1065,16 @@ def link_configs(out_dir):
     rel_src = os.path.relpath(src, link_dir)       # ../../common_files
     names = sorted(n for n in os.listdir(src)
                    if not n.startswith(".") and os.path.isfile(os.path.join(src, n)))
+    linked = 0
     for name in names:
-        os.symlink(os.path.join(rel_src, name), os.path.join(link_dir, name))
-    print("unpack: linked %d config(s) from %s into %s" % (len(names), CONFIG_SRC, CONFIG_LINK_DIR))
+        dest = os.path.join(link_dir, name)
+        if os.path.lexists(dest):        # e.g. block_template.config.tcl from the bundle
+            print("unpack: WARNING: %s/%s already exists (from the bundle); not linked"
+                  % (CONFIG_LINK_DIR, name))
+            continue
+        os.symlink(os.path.join(rel_src, name), dest)
+        linked += 1
+    print("unpack: linked %d config(s) from %s into %s" % (linked, CONFIG_SRC, CONFIG_LINK_DIR))
 
 
 def main(argv=None):

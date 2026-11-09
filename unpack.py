@@ -5,8 +5,9 @@ Usage:
     unpack.py BUNDLE [-d DIR] [--force] [--list]
 
 Files are written under DIR (default: current directory). Then the
-directory flowgen/configs/ is created, holding one link per file in your
-local DIR/common_files/ (the golden block configs):
+directory flowgen/configs/ (which holds block_template.config.tcl from the
+bundle) gets one link per file in your local DIR/common_files/ (the golden
+block configs):
     flowgen/configs/<name> -> ../../common_files/<name>
 Re-run unpack (with --force) to pick up configs added to common_files/ later.
 
@@ -111,9 +112,16 @@ def link_configs(out_dir):
     rel_src = os.path.relpath(src, link_dir)       # ../../common_files
     names = sorted(n for n in os.listdir(src)
                    if not n.startswith(".") and os.path.isfile(os.path.join(src, n)))
+    linked = 0
     for name in names:
-        os.symlink(os.path.join(rel_src, name), os.path.join(link_dir, name))
-    print("unpack: linked %d config(s) from %s into %s" % (len(names), CONFIG_SRC, CONFIG_LINK_DIR))
+        dest = os.path.join(link_dir, name)
+        if os.path.lexists(dest):        # e.g. block_template.config.tcl from the bundle
+            print("unpack: WARNING: %s/%s already exists (from the bundle); not linked"
+                  % (CONFIG_LINK_DIR, name))
+            continue
+        os.symlink(os.path.join(rel_src, name), dest)
+        linked += 1
+    print("unpack: linked %d config(s) from %s into %s" % (linked, CONFIG_SRC, CONFIG_LINK_DIR))
 
 
 def main(argv=None):
