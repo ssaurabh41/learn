@@ -885,6 +885,16 @@ def main(argv=None):
 if __name__ == "__main__":
     sys.exit(main())
 #@@END flowgen/flowgen.py
+#@@FILE flowgen/runflowgen.sh mode=755 enc=text lines=8 eol=1 md5=6ffe72c53c32c7c6606d41703ebc49fe
+#!/bin/tcsh -f
+# Run flowgen.py with python3 (3.6+ with tkinter).
+# Usage: runflowgen.sh [--force] CONFIG
+# Example: runflowgen.sh configs/block.config.tcl
+
+set here = "`dirname $0`"
+python3 "$here/flowgen.py" $argv:q
+exit $status
+#@@END flowgen/runflowgen.sh
 #@@FILE pack.py mode=755 enc=text lines=115 eol=1 md5=789fd890236ce36dd4ca5ea01f8edac3
 #!/usr/bin/env python3
 """pack - concatenate a repo's files into one plain-text bundle.
