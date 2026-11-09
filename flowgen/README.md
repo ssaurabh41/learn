@@ -33,9 +33,9 @@ The log goes to `rtl2syn/rtl2syn.log`, the reports to `rtl2syn/reports/`, and th
 
 The config is plain Tcl and is evaluated by a real Tcl interpreter. See `block_template.config.tcl` for every supported variable, and copy from it to start a new block config.
 
-Block configs live in the top-level `common_files/` directory; `flowgen/configs` is a link to it. `common_files/` holds your golden configs on your own machine: it is never packed into `bundle.txt`, and `unpack.py` never touches it.
+Block configs live in the top-level `common_files/` directory. `unpack.py` creates `flowgen/configs/` with a link to each file in `common_files/`; re-run it with `--force` after adding a config. `common_files/` holds your golden configs on your own machine: it is never packed into `bundle.txt`, and `unpack.py` never touches it.
 
-Relative paths are resolved from the config file's own directory. Misspelled `FM_*` or `ENV_*` variables produce a warning, and missing input files produce warnings. Config errors are all reported together, and nothing is generated if there are any.
+Relative paths are resolved from the config file's real directory (`common_files/`, even when run through a `flowgen/configs/` link). Misspelled `FM_*` or `ENV_*` variables produce a warning, and missing input files produce warnings. Config errors are all reported together, and nothing is generated if there are any.
 
 | Variable | Required | Meaning |
 |---|---|---|

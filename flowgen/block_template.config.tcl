@@ -5,7 +5,8 @@
 # golden config in common_files/ (e.g. common_files/my_block.config.tcl).
 #
 # Plain Tcl: use set, lists, arrays, $env(...), [glob ...], [file join ...].
-# Relative paths are relative to THIS file's directory.
+# Relative paths are relative to THIS file's real directory (common_files/,
+# even when used through a flowgen/configs/ link).
 # Only the variables below are used; misspelled FM_*/ENV_* names are warned
 # about. Any other variable (e.g. ROOT below) is just a helper for you.
 #

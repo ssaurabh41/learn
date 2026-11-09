@@ -4,8 +4,11 @@
 Usage:
     unpack.py BUNDLE [-d DIR] [--force] [--list]
 
-Files are written under DIR (default: current directory), then symbolic
-links (e.g. flowgen/configs -> ../common_files) are created.
+Files are written under DIR (default: current directory). Then the
+directory flowgen/configs/ is created, holding one link per file in your
+local DIR/common_files/ (the golden block configs):
+    flowgen/configs/<name> -> ../../common_files/<name>
+Re-run unpack (with --force) to pick up configs added to common_files/ later.
 
 If a top-level directory from the bundle (flowgen/) already exists in DIR,
 unpack stops with an error and changes nothing. With --force that directory
@@ -28,7 +31,9 @@ import re
 import shutil
 import sys
 
-LINK_RE = re.compile(r"^#@@LINK (\S+) -> (\S+)$")
+CONFIG_SRC = "common_files"          # local golden configs (never in a bundle)
+CONFIG_LINK_DIR = "flowgen/configs"   # created by unpack, one link per config
+
 HEADER_RE = re.compile(r"^#@@FILE (\S+) mode=([0-7]{3}) enc=(text|b64) lines=(\d+) "
                        r"eol=([01]) md5=([0-9a-f]{32})$")
 
@@ -52,26 +57,16 @@ def read_bundle(bundle_path):
 
 
 def parse(bundle_path):
-    """Return ([(path, mode, bytes)], [(path, target)]) after validating the whole bundle."""
+    """Return [(path, mode, bytes)] after validating the whole bundle."""
     lines = read_bundle(bundle_path).splitlines()
     if not lines or lines[0] != "#@@PACK 3":
         raise BundleError("not a pack.py bundle, or made by a different pack.py version "
                           "(first line must be '#@@PACK 3')")
 
-    files, links, i = [], [], 1
+    files, i = [], 1
     while i < len(lines):
         if lines[i].strip() == "":
             i += 1                      # tolerate blank lines between files
-            continue
-        link = LINK_RE.match(lines[i].rstrip())
-        if link:
-            path, target = link.groups()
-            check_path(path, i)
-            resolved = os.path.normpath(os.path.join(os.path.dirname(path), target))
-            if target.startswith("/") or resolved == ".." or resolved.startswith("../"):
-                raise BundleError("line %d: unsafe link target: %s -> %s" % (i + 1, path, target))
-            links.append((path, target))
-            i += 1
             continue
         m = HEADER_RE.match(lines[i].rstrip())
         if not m:
@@ -96,12 +91,29 @@ def parse(bundle_path):
             raise BundleError("%s: MD5 mismatch (content was changed in transit)" % path)
         files.append((path, int(mode, 8), data))
         i = end + 1
-    return files, links
+    return files
 
 
 def check_path(path, i):
     if path.startswith("/") or ".." in path.split("/"):
         raise BundleError("line %d: unsafe path: %s" % (i + 1, path))
+
+
+def link_configs(out_dir):
+    """Create flowgen/configs/ with a relative link to each golden config."""
+    src = os.path.join(out_dir, CONFIG_SRC)
+    link_dir = os.path.join(out_dir, *CONFIG_LINK_DIR.split("/"))
+    os.makedirs(link_dir, exist_ok=True)
+    if not os.path.isdir(src):
+        print("unpack: WARNING: %s not found; %s left empty"
+              % (os.path.abspath(src), CONFIG_LINK_DIR))
+        return
+    rel_src = os.path.relpath(src, link_dir)       # ../../common_files
+    names = sorted(n for n in os.listdir(src)
+                   if not n.startswith(".") and os.path.isfile(os.path.join(src, n)))
+    for name in names:
+        os.symlink(os.path.join(rel_src, name), os.path.join(link_dir, name))
+    print("unpack: linked %d config(s) from %s into %s" % (len(names), CONFIG_SRC, CONFIG_LINK_DIR))
 
 
 def main(argv=None):
@@ -115,20 +127,17 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     try:
-        files, links = parse(args.bundle)
+        files = parse(args.bundle)
     except (OSError, BundleError) as exc:
         sys.exit("unpack: ERROR: %s" % exc)
 
     if args.list:
         for path, mode, _ in files:
             print("%03o %s" % (mode, path))
-        for path, target in links:
-            print("lnk %s -> %s" % (path, target))
         return 0
 
-    # Top-level directories (flowgen, common_files, ...) this bundle owns.
-    paths = [p for p, _, _ in files] + [p for p, _ in links]
-    tops = sorted(set(p.split("/")[0] for p in paths if "/" in p))
+    # Top-level directories (flowgen) this bundle owns.
+    tops = sorted(set(p.split("/")[0] for p, _, _ in files if "/" in p))
     existing = [t for t in tops if os.path.lexists(os.path.join(args.dir, t))]
     if existing and not args.force:
         sys.exit("unpack: ERROR: already exists in %s: %s\n"
@@ -150,21 +159,8 @@ def main(argv=None):
             fh.write(data)
         os.chmod(dest, mode)
 
-    for path, target in links:
-        dest = os.path.join(args.dir, *path.split("/"))
-        if os.path.lexists(dest):
-            if os.path.isdir(dest) and not os.path.islink(dest):
-                sys.exit("unpack: ERROR: cannot create link %s: a directory is in the way" % dest)
-            os.remove(dest)
-        if os.path.dirname(dest):
-            os.makedirs(os.path.dirname(dest), exist_ok=True)
-        os.symlink(target, dest)
-        print("unpack: link %s -> %s" % (path, target))
-        if not os.path.exists(dest):
-            print("unpack: WARNING: link target does not exist yet: %s"
-                  % os.path.normpath(os.path.join(os.path.dirname(dest), target)))
-
-    print("unpack: %d files, %d links -> %s" % (len(files), len(links), os.path.abspath(args.dir)))
+    link_configs(args.dir)
+    print("unpack: %d files -> %s" % (len(files), os.path.abspath(args.dir)))
     return 0
 
 

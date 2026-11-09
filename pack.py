@@ -13,7 +13,6 @@ golden block configs live only on the user's machine).
 The bundle is pure ASCII, so it survives copy/paste, downloads and CRLF
 line endings. Pure-ASCII text files are stored as readable lines; any other
 file (non-ASCII text, binary) is stored as base64 and restored byte-exact.
-Symbolic links are stored as links (relative targets inside ROOT only).
 Recreate the files with unpack.py (which is itself inside the bundle).
 
 Bundle format:
@@ -21,7 +20,6 @@ Bundle format:
     #@@FILE <path> mode=<octal> enc=<text|b64> lines=<n> eol=<0|1> md5=<hex>
     <n lines: file content (text) or base64 of the raw bytes (b64)>
     #@@END <path>
-    #@@LINK <path> -> <relative target>
 
 Python 3.6+, standard library only.
 """
@@ -59,8 +57,7 @@ def list_files(root):
                 rel = os.path.relpath(os.path.join(dirpath, name), root)
                 files.append(rel.replace(os.sep, "/"))
     return sorted(f for f in files
-                  if (os.path.isfile(os.path.join(root, f)) or os.path.islink(os.path.join(root, f)))
-                  and not f.startswith(EXCLUDE_DIRS))
+                  if os.path.isfile(os.path.join(root, f)) and not f.startswith(EXCLUDE_DIRS))
 
 
 def main(argv=None):
@@ -73,19 +70,10 @@ def main(argv=None):
     output = os.path.abspath(args.output or "bundle.txt")
 
     chunks = ["#@@PACK 3\n"]
-    links = []
     packed, encoded = 0, []
     for rel in list_files(root):
         path = os.path.join(root, rel)
         if os.path.abspath(path) == output:
-            continue
-        if os.path.islink(path):
-            target = os.readlink(path)
-            resolved = os.path.normpath(os.path.join(os.path.dirname(path), target))
-            if os.path.isabs(target) or not resolved.startswith(root + os.sep):
-                sys.exit("pack: ERROR: link %s -> %s must be relative and stay inside %s"
-                         % (rel, target, root))
-            links.append("#@@LINK %s -> %s\n" % (rel, target.replace(os.sep, "/")))
             continue
         with open(path, "rb") as fh:
             data = fh.read()
@@ -114,13 +102,12 @@ def main(argv=None):
         chunks.append("#@@END %s\n" % rel)
         packed += 1
 
-    chunks.extend(links)                 # links last: created after their targets
     with open(output, "w", encoding="ascii", newline="\n") as fh:
         fh.writelines(chunks)
 
     for rel in encoded:
         print("pack: note: not pure ASCII text, stored as base64: %s" % rel)
-    print("pack: %d files, %d links from %s -> %s" % (packed, len(links), root, output))
+    print("pack: %d files from %s -> %s" % (packed, root, output))
     return 0
 
 

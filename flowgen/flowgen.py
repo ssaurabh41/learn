@@ -90,7 +90,7 @@ class Config(object):
     """Typed, validated view of block.config.tcl. Collects all problems."""
 
     def __init__(self, path):
-        self.path = os.path.abspath(path)
+        self.path = os.path.realpath(path)   # follow flowgen/configs links to common_files
         self.dir = os.path.dirname(self.path)
         self.errors = []
         self.warnings = []
