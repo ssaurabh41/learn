@@ -55,11 +55,11 @@ def list_files(root):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Pack repo files into one text bundle.")
     parser.add_argument("root", nargs="?", help="directory to pack (default: git repo root)")
-    parser.add_argument("-o", "--output", help="bundle file (default: <root name>_bundle.txt)")
+    parser.add_argument("-o", "--output", help="bundle file (default: bundle.txt)")
     args = parser.parse_args(argv)
 
     root = os.path.abspath(args.root or repo_root())
-    output = os.path.abspath(args.output or os.path.basename(root) + "_bundle.txt")
+    output = os.path.abspath(args.output or "bundle.txt")
 
     chunks = ["#@@PACK 1\n"]
     packed, non_ascii, skipped = 0, [], []
