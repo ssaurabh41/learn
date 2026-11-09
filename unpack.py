@@ -7,11 +7,11 @@ Usage:
 Files are written under DIR (default: current directory), then symbolic
 links (e.g. flowgen/configs -> ../common_files) are created.
 
-If a top-level directory from the bundle (flowgen/, common_files/) already
-exists in DIR, unpack stops with an error and changes nothing. With --force
-those directories are removed first and recreated from the bundle, so no
-stale files are left behind. Top-level files (pack.py, unpack.py) are
-simply overwritten.
+If a top-level directory from the bundle (flowgen/) already exists in DIR,
+unpack stops with an error and changes nothing. With --force that directory
+is removed first and recreated from the bundle, so no stale files are left
+behind. Nothing else in DIR is removed: common_files/ is never in a bundle
+and is never touched. Top-level files (pack.py, unpack.py) are overwritten.
 
 Every file is checked against its MD5 before anything is written; a damaged
 bundle writes nothing.
@@ -109,8 +109,8 @@ def main(argv=None):
     parser.add_argument("bundle", help="bundle file made by pack.py")
     parser.add_argument("-d", "--dir", default=".", help="output directory (default: .)")
     parser.add_argument("--force", action="store_true",
-                        help="remove existing top-level directories from the bundle "
-                             "(flowgen/, common_files/) before unpacking")
+                        help="remove the existing flowgen/ (top-level directories in the "
+                             "bundle) before unpacking; nothing else is removed")
     parser.add_argument("--list", action="store_true", help="only list the files")
     args = parser.parse_args(argv)
 
@@ -160,6 +160,9 @@ def main(argv=None):
             os.makedirs(os.path.dirname(dest), exist_ok=True)
         os.symlink(target, dest)
         print("unpack: link %s -> %s" % (path, target))
+        if not os.path.exists(dest):
+            print("unpack: WARNING: link target does not exist yet: %s"
+                  % os.path.normpath(os.path.join(os.path.dirname(dest), target)))
 
     print("unpack: %d files, %d links -> %s" % (len(files), len(links), os.path.abspath(args.dir)))
     return 0

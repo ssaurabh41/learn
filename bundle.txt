@@ -1,75 +1,5 @@
 #@@PACK 3
-#@@FILE common_files/block.config.tcl mode=644 enc=text lines=68 eol=1 md5=75666691f8a15c365e693cdf3c609bbf
-# =============================================================================
-# block.config.tcl - block description read by flowgen.py
-#
-# Plain Tcl: use set, lists, arrays, $env(...), [glob ...], [file join ...].
-# Relative paths are relative to THIS file's directory.
-# Only the variables below are used; misspelled FM_*/ENV_* names are warned
-# about. Any other variable (e.g. ROOT below) is just a helper for you.
-#
-# Generate:   flowgen.py block.config.tcl
-# =============================================================================
-
-# Helper variable (not read by flowgen)
-set ROOT /proj/chip/blocks/my_block
-
-# -- Block --------------------------------------------------------------------
-# Top module name (required)
-set DESIGN my_block
-
-# -- Flows to generate ----------------------------------------------------------
-# Default: rtl2syn (RTL reference vs synthesized netlist)
-set FM_FLOWS {rtl2syn}
-
-# -- Tool and license environment (written into the run_*.csh scripts) -------
-# cshrc files to source, in order
-set ENV_SOURCE [list /tools/synopsys/setup.cshrc]
-# setenv NAME value
-set ENV_SETENV(SNPSLMD_LICENSE_FILE) 27020@lic-server1:27020@lic-server2
-# Formality executable (name on PATH or full path). Default: fm_shell
-# set FM_SHELL /tools/synopsys/fm/V-2023.12/bin/fm_shell
-
-# -- Reference: RTL (required) -----------------------------------------------
-# One of: sverilog (default), verilog, vhdl
-set FM_RTL_FORMAT sverilog
-set FM_RTL_FILES [list \
-    $ROOT/rtl/my_block_pkg.sv \
-    $ROOT/rtl/my_block_ctrl.sv \
-    $ROOT/rtl/my_block.sv \
-]
-# Or pick them up with a glob:
-# set FM_RTL_FILES [lsort [glob $ROOT/rtl/*.sv]]
-
-# Optional VCS-style options passed to read_sverilog/read_verilog -vcs
-# (include dirs, defines, -f filelists). Not used for vhdl.
-# set FM_RTL_VCS_OPTS "+incdir+$ROOT/rtl/include +define+SYNTHESIS"
-
-# -- Implementation: synthesized netlist (required) ----------------------------
-set FM_SYN_NETLIST [list $ROOT/syn/outputs/my_block.syn.v]
-
-# -- Synthesis guidance (optional, recommended) --------------------------------
-set FM_SVF $ROOT/syn/outputs/my_block.svf
-# synopsys_auto_setup (default 1). Set 0 to turn it off.
-# set FM_AUTO_SETUP 1
-
-# -- Technology libraries (required) ----------------------------------------------
-set FM_LIBS [list \
-    /pdk/stdcell/db/stdcell_tt_0p80v_25c.db \
-]
-
-# -- Extra Formality app vars: set_app_var <name> <value> -------------------------
-# set FM_APP_VAR(hdlin_unresolved_modules)  black_box
-# set FM_APP_VAR(verification_timeout_limit) 4:0:0
-
-# -- Hooks: your own Tcl files, sourced at fixed points in the flow ------------
-#   setup       after app vars, before anything is read
-#   pre_match   designs read and set_top done (set_constant, set_black_box, ...)
-#   pre_verify  after match (set_user_match, ...)
-#   post_verify after verify (extra reports)
-# set FM_HOOK(pre_match) $ROOT/fm/constraints.tcl
-#@@END common_files/block.config.tcl
-#@@FILE flowgen/README.md mode=644 enc=text lines=55 eol=1 md5=9e72462d4c6cfebe18e58b9983cac371
+#@@FILE flowgen/README.md mode=644 enc=text lines=55 eol=1 md5=aaafb5d2f5f6ce1f6f465740062a9bbe
 # flowgen
 
 Generates EDA run directories from one Tcl block config. Python 3.6+ (with tkinter), standard library only.
@@ -105,7 +35,7 @@ The log goes to `rtl2syn/rtl2syn.log`, the reports to `rtl2syn/reports/`, and th
 
 The config is plain Tcl and is evaluated by a real Tcl interpreter. See `configs/block.config.tcl` for every supported variable.
 
-Block configs live in the top-level `common_files/` directory; `flowgen/configs` is a link to it.
+Block configs live in the top-level `common_files/` directory; `flowgen/configs` is a link to it. `common_files/` holds your golden configs on your own machine: it is never packed into `bundle.txt`, and `unpack.py` never touches it.
 
 Relative paths are resolved from the config file's own directory. Misspelled `FM_*` or `ENV_*` variables produce a warning, and missing input files produce warnings. Config errors are all reported together, and nothing is generated if there are any.
 
@@ -559,7 +489,7 @@ def main(argv=None):
 if __name__ == "__main__":
     sys.exit(main())
 #@@END flowgen/flowgen.py
-#@@FILE pack.py mode=755 enc=text lines=127 eol=1 md5=3563b4cd5c6790fbc1e7a60c572b53f8
+#@@FILE pack.py mode=755 enc=text lines=128 eol=1 md5=97254b653161da1386584616a69e1694
 #!/usr/bin/env python3
 """pack - concatenate a repo's files into one plain-text bundle.
 
@@ -569,7 +499,8 @@ Usage:
 ROOT defaults to the git repo containing the current directory (or the
 current directory if not in git). In a git repo only tracked files are
 packed; otherwise every file under ROOT except .git/ is packed. Paths
-under EXCLUDE_DIRS (docs/) are never packed.
+under EXCLUDE_DIRS are never packed: docs/, and common_files/ (the
+golden block configs live only on the user's machine).
 
 The bundle is pure ASCII, so it survives copy/paste, downloads and CRLF
 line endings. Pure-ASCII text files are stored as readable lines; any other
@@ -594,7 +525,7 @@ import os
 import subprocess
 import sys
 
-EXCLUDE_DIRS = ("docs/",)   # top-level directories never packed
+EXCLUDE_DIRS = ("docs/", "common_files/")   # top-level directories never packed
 
 
 def repo_root():
@@ -688,7 +619,7 @@ def main(argv=None):
 if __name__ == "__main__":
     sys.exit(main())
 #@@END pack.py
-#@@FILE unpack.py mode=755 enc=text lines=169 eol=1 md5=8fb88403ba17c3416ecc7cb9c7ae3923
+#@@FILE unpack.py mode=755 enc=text lines=172 eol=1 md5=0cda05b43c295880238cf204469210c4
 #!/usr/bin/env python3
 """unpack - recreate files from a bundle made by pack.py.
 
@@ -698,11 +629,11 @@ Usage:
 Files are written under DIR (default: current directory), then symbolic
 links (e.g. flowgen/configs -> ../common_files) are created.
 
-If a top-level directory from the bundle (flowgen/, common_files/) already
-exists in DIR, unpack stops with an error and changes nothing. With --force
-those directories are removed first and recreated from the bundle, so no
-stale files are left behind. Top-level files (pack.py, unpack.py) are
-simply overwritten.
+If a top-level directory from the bundle (flowgen/) already exists in DIR,
+unpack stops with an error and changes nothing. With --force that directory
+is removed first and recreated from the bundle, so no stale files are left
+behind. Nothing else in DIR is removed: common_files/ is never in a bundle
+and is never touched. Top-level files (pack.py, unpack.py) are overwritten.
 
 Every file is checked against its MD5 before anything is written; a damaged
 bundle writes nothing.
@@ -800,8 +731,8 @@ def main(argv=None):
     parser.add_argument("bundle", help="bundle file made by pack.py")
     parser.add_argument("-d", "--dir", default=".", help="output directory (default: .)")
     parser.add_argument("--force", action="store_true",
-                        help="remove existing top-level directories from the bundle "
-                             "(flowgen/, common_files/) before unpacking")
+                        help="remove the existing flowgen/ (top-level directories in the "
+                             "bundle) before unpacking; nothing else is removed")
     parser.add_argument("--list", action="store_true", help="only list the files")
     args = parser.parse_args(argv)
 
@@ -851,6 +782,9 @@ def main(argv=None):
             os.makedirs(os.path.dirname(dest), exist_ok=True)
         os.symlink(target, dest)
         print("unpack: link %s -> %s" % (path, target))
+        if not os.path.exists(dest):
+            print("unpack: WARNING: link target does not exist yet: %s"
+                  % os.path.normpath(os.path.join(os.path.dirname(dest), target)))
 
     print("unpack: %d files, %d links -> %s" % (len(files), len(links), os.path.abspath(args.dir)))
     return 0

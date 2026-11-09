@@ -7,7 +7,8 @@ Usage:
 ROOT defaults to the git repo containing the current directory (or the
 current directory if not in git). In a git repo only tracked files are
 packed; otherwise every file under ROOT except .git/ is packed. Paths
-under EXCLUDE_DIRS (docs/) are never packed.
+under EXCLUDE_DIRS are never packed: docs/, and common_files/ (the
+golden block configs live only on the user's machine).
 
 The bundle is pure ASCII, so it survives copy/paste, downloads and CRLF
 line endings. Pure-ASCII text files are stored as readable lines; any other
@@ -32,7 +33,7 @@ import os
 import subprocess
 import sys
 
-EXCLUDE_DIRS = ("docs/",)   # top-level directories never packed
+EXCLUDE_DIRS = ("docs/", "common_files/")   # top-level directories never packed
 
 
 def repo_root():
