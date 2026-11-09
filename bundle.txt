@@ -1,5 +1,5 @@
 #@@PACK 3
-#@@FILE flowgen/README.md mode=644 enc=text lines=65 eol=1 md5=c9177d6e795b63cddf1402629d265af4
+#@@FILE flowgen/README.md mode=644 enc=text lines=67 eol=1 md5=5e4beaf9a615f251ae08b85c29fd2da3
 # flowgen
 
 Generates EDA run directories from one Tcl block config. Python 3.6+ (with tkinter), standard library only.
@@ -9,8 +9,10 @@ The first supported tool is Synopsys Formality, with the `rtl2syn` flow: RTL ref
 ## Usage
 
 ```
-flowgen.py configs/block.config.tcl
+runflowgen.sh configs/block.config.tcl
 ```
+
+`runflowgen.sh` is a csh (tcsh) wrapper that runs `flowgen.py` with `python3`, passing all arguments through. Add `--force` to generate even when input files are missing.
 
 This creates the following in the current directory. If the directory already exists, it is overwritten.
 
@@ -18,8 +20,8 @@ This creates the following in the current directory. If the directory already ex
 <yyyy_mm_dd_hh_mm_ss>_<TOP_DESIGN>_formality/
   block.config.tcl      copy of the config used
   run_rtl2syn.csh       run script (tcsh): sets up the env, runs fm_shell
-  rtl2syn.tcl           generated Formality script
   rtl2syn/              where Formality runs
+    rtl2syn.tcl         generated Formality script
     logs/               empty, filled in by the tool
     reports/            empty, filled in by the tool
 ```
@@ -284,11 +286,12 @@ set ENV_SOURCE {
 #   set ENV_SETENV(SNPSLMD_LICENSE_FILE) "27020@lic-server1"
 set ENV_SETENV(SNPSLMD_LICENSE_FILE) "27020@lic-server1"
 #@@END flowgen/configs/block_template.config.tcl
-#@@FILE flowgen/flowgen.py mode=755 enc=text lines=596 eol=1 md5=5cb7ea15f249a3e9a046fa9aad0d859a
+#@@FILE flowgen/flowgen.py mode=755 enc=text lines=597 eol=1 md5=a86bcc2e1d07934c689851f7da06a1b9
 #!/usr/bin/env python3
 """flowgen - generate EDA run directories from a Tcl block config.
 
 Usage:
+    runflowgen.sh [--force] CONFIG     (csh wrapper in this directory)
     flowgen.py [--force] CONFIG
     flowgen.py -h
 
@@ -310,8 +313,8 @@ Examples:
 Output:
     ./<yyyy_mm_dd_hh_mm_ss>_<TOP_DESIGN>_formality/ in the current directory,
     with one run script per flow (run_<flow>.csh) and one sub-directory per
-    flow where the tool runs (with empty logs/ and reports/), plus the
-    generated Formality Tcl script (<flow>.tcl). Nothing is launched;
+    flow where the tool runs, holding the generated Formality Tcl script
+    (<flow>.tcl) and empty logs/ and reports/ directories. Nothing is launched;
     run the scripts manually. An existing directory of the same name is
     overwritten.
 
@@ -690,7 +693,7 @@ def vcs_option(fileset):
 
 
 def gen_fm_rtl2syn(cfg, flow):
-    """Formality script. Runs from <run_dir>/<flow>/, next to logs/ and reports/."""
+    """Formality script, <run_dir>/<flow>/<flow>.tcl, run from that directory."""
     settings = dict(cfg.tool_settings.get(FM, {}))
     settings.setdefault("synopsys_auto_setup", "true")
     lines = ["# Formality %s: RTL vs synthesized netlist for %s" % (flow, cfg.top)]
@@ -790,7 +793,7 @@ def gen_run_script(cfg, flow):
     lines += [
         "",
         "# Run the tool. Input from /dev/null so it exits if the script stops early.",
-        "%s -f ../${flow}.tcl < /dev/null |& tee logs/${flow}.log" % tool_cmd,
+        "%s -f ${flow}.tcl < /dev/null |& tee logs/${flow}.log" % tool_cmd,
         "",
         "if ( ! -e ${flow}.status ) then",
         '  echo "$flow did not finish. See $flow/logs/${flow}.log"',
@@ -867,7 +870,7 @@ def main(argv=None):
     for flow, (fm_tcl, run_csh) in outputs.items():
         os.makedirs(os.path.join(run_dir, flow, "logs"))      # filled in by the tool
         os.makedirs(os.path.join(run_dir, flow, "reports"))
-        write_file(os.path.join(run_dir, flow + ".tcl"), fm_tcl)
+        write_file(os.path.join(run_dir, flow, flow + ".tcl"), fm_tcl)
         write_file(os.path.join(run_dir, "run_%s.csh" % flow), run_csh, executable=True)
 
     print("flowgen: generated %s" % run_dir)

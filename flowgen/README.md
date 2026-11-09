@@ -7,8 +7,10 @@ The first supported tool is Synopsys Formality, with the `rtl2syn` flow: RTL ref
 ## Usage
 
 ```
-flowgen.py configs/block.config.tcl
+runflowgen.sh configs/block.config.tcl
 ```
+
+`runflowgen.sh` is a csh (tcsh) wrapper that runs `flowgen.py` with `python3`, passing all arguments through. Add `--force` to generate even when input files are missing.
 
 This creates the following in the current directory. If the directory already exists, it is overwritten.
 
@@ -16,8 +18,8 @@ This creates the following in the current directory. If the directory already ex
 <yyyy_mm_dd_hh_mm_ss>_<TOP_DESIGN>_formality/
   block.config.tcl      copy of the config used
   run_rtl2syn.csh       run script (tcsh): sets up the env, runs fm_shell
-  rtl2syn.tcl           generated Formality script
   rtl2syn/              where Formality runs
+    rtl2syn.tcl         generated Formality script
     logs/               empty, filled in by the tool
     reports/            empty, filled in by the tool
 ```

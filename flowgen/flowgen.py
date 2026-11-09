@@ -2,6 +2,7 @@
 """flowgen - generate EDA run directories from a Tcl block config.
 
 Usage:
+    runflowgen.sh [--force] CONFIG     (csh wrapper in this directory)
     flowgen.py [--force] CONFIG
     flowgen.py -h
 
@@ -23,8 +24,8 @@ Examples:
 Output:
     ./<yyyy_mm_dd_hh_mm_ss>_<TOP_DESIGN>_formality/ in the current directory,
     with one run script per flow (run_<flow>.csh) and one sub-directory per
-    flow where the tool runs (with empty logs/ and reports/), plus the
-    generated Formality Tcl script (<flow>.tcl). Nothing is launched;
+    flow where the tool runs, holding the generated Formality Tcl script
+    (<flow>.tcl) and empty logs/ and reports/ directories. Nothing is launched;
     run the scripts manually. An existing directory of the same name is
     overwritten.
 
@@ -403,7 +404,7 @@ def vcs_option(fileset):
 
 
 def gen_fm_rtl2syn(cfg, flow):
-    """Formality script. Runs from <run_dir>/<flow>/, next to logs/ and reports/."""
+    """Formality script, <run_dir>/<flow>/<flow>.tcl, run from that directory."""
     settings = dict(cfg.tool_settings.get(FM, {}))
     settings.setdefault("synopsys_auto_setup", "true")
     lines = ["# Formality %s: RTL vs synthesized netlist for %s" % (flow, cfg.top)]
@@ -503,7 +504,7 @@ def gen_run_script(cfg, flow):
     lines += [
         "",
         "# Run the tool. Input from /dev/null so it exits if the script stops early.",
-        "%s -f ../${flow}.tcl < /dev/null |& tee logs/${flow}.log" % tool_cmd,
+        "%s -f ${flow}.tcl < /dev/null |& tee logs/${flow}.log" % tool_cmd,
         "",
         "if ( ! -e ${flow}.status ) then",
         '  echo "$flow did not finish. See $flow/logs/${flow}.log"',
@@ -580,7 +581,7 @@ def main(argv=None):
     for flow, (fm_tcl, run_csh) in outputs.items():
         os.makedirs(os.path.join(run_dir, flow, "logs"))      # filled in by the tool
         os.makedirs(os.path.join(run_dir, flow, "reports"))
-        write_file(os.path.join(run_dir, flow + ".tcl"), fm_tcl)
+        write_file(os.path.join(run_dir, flow, flow + ".tcl"), fm_tcl)
         write_file(os.path.join(run_dir, "run_%s.csh" % flow), run_csh, executable=True)
 
     print("flowgen: generated %s" % run_dir)
