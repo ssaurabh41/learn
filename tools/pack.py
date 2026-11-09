@@ -77,6 +77,8 @@ def main(argv=None):
         if "\0" in text:
             skipped.append(rel)
             continue
+        if text.startswith("#@@PACK"):
+            continue                     # never pack a bundle inside a bundle
         if any(ord(c) > 127 for c in text):
             non_ascii.append(rel)
 

@@ -1,0 +1,1054 @@
+#@@PACK 1
+#@@FILE docs/ip3d_kit_plan.md mode=644 lines=144 eol=1 md5=9ef6b428f7d1f65fccfa85b2ec1a742d
+# 3D IP Kit — Plan
+
+**Kit:** soft D2D controller and hard D2D PHY, released together
+**Shipped flow:** customer integration checks · **Tools:** multi-vendor · **Version control:** SOS
+**Languages:** Python 3.6+ (standard library only) for tooling and verif · Tcl inside EDA tools · tcsh for sourced environment setup only
+**CI/CD:** manual trigger · auto-publish to internal · GA needs approval · `ip3d` CLI now, thin Airflow DAG later
+
+---
+
+## 1. Release tiers
+
+| Tier | Source | Gate | Who uses it |
+|---|---|---|---|
+| **dev** | workarea | smoke | IP team |
+| **internal** | SOS tag | full QC | integration, test chip, AEs |
+| **ga** | promoted from internal, never rebuilt | QC + scrub + approver | customers |
+
+Early-access drops are GA releases with `maturity: alpha|beta` in the MANIFEST.
+
+---
+
+## 2. Dev tree (SOS project)
+
+```
+ip3d/
+  ip/ctrl/   rtl sdc upf syn lec doc            soft
+  ip/phy/    lef gds lib netlist bump model doc  hard
+  ip/ref/    ctrl+phy test integration           internal
+  verif/     shipped customer flow (see 4)
+  tools/     CI/CD + release tooling (see 5)     internal
+  env/       tcsh setup files to source          internal
+```
+
+## 3. Customer kit
+
+```
+ip3d_<ver>/
+  README  RELEASE_NOTES  LICENSE  MANIFEST.json
+  ctrl/  phy/  verif/
+```
+
+MANIFEST.json holds the SOS tag, tool versions, tooling revision, command line, user, host, timestamp, approver (GA) and a sha256 for every file.
+
+---
+
+## 4. Shipped verification flow (customer)
+
+```
+verif/bin/ip3d_check -cfg my.json [-check X] [-bundle]
+verif/checks/<check>/check.py             logic + pass criteria (vendor-neutral)
+verif/checks/<check>/vendor/{cdns,snps,siem}/*.tcl   tool call only
+```
+
+| Check | Proves |
+|---|---|
+| kit_integrity | kit complete and unmodified (no EDA tool needed) |
+| pin_bump | customer pins and bumps line up with the IP bump map |
+| constraints | customer SDC covers what the IP requires |
+| upf | customer UPF matches the IP power intent |
+| lec | customer wrapper is equivalent to the reference |
+
+- A check passes only if: exit code is 0, the log scan is clean, and every expected output exists.
+- An unsupported vendor is an explicit failure, never a silent skip.
+- `-bundle` packs logs, the MANIFEST verification result and environment info into one tarball for AE support.
+
+---
+
+## 5. CI/CD tooling (`tools/`)
+
+```
+tools/
+  bin/ip3d                      CLI entry: ip3d <stage> [args]
+  lib/ip3d/
+    stage.py                    stage contract (below)
+    spec.py manifest.py logscan.py lsf.py lock.py
+    stages/  build  qc  publish  promote  diff
+    qc/      one module per QC item, run in the order listed in kit_spec
+  spec/kit_spec.json            single source of truth
+  spec/errors/<tool>.pat        error patterns per tool
+  spec/waivers.json             waivers: pattern, scope, owner, reason, expiry
+  spec/approvers.json           who may approve GA
+  tests/fixture_ip/  test_*.py  fake IP, no EDA tools needed, runs on Python 3.6
+```
+
+**kit_spec.json** lists every deliverable (path, view, tiers, required) and the ordered list of QC items. Build, QC, the GA filter and the MANIFEST all read from it.
+
+**Stage contract.** Every stage takes `-in <dir> -out <dir>` and writes `status.json` (result, checks, logs).
+
+| Exit code | Meaning |
+|---|---|
+| 0 | pass |
+| 1 | check failed |
+| 2 | usage or config error |
+| 3 | tool, license or infra error |
+
+**QC items, starting set:** completeness, checksums, log scan with waivers, verif/ on ref, scrub (GA only). Future items, such as view consistency, are a new module under `qc/` plus one line in kit_spec.
+
+**Waivers.** An expired waiver fails QC. Every waiver used is listed in `status.json` and the release notes.
+
+---
+
+## 6. Pipeline
+
+```
+ip3d ci -tag <T>        build → qc → publish(internal) → diff vs previous
+ip3d promote -from <ver> -approver <name>
+                        verify → filter(ga) → qc+scrub → publish(ga) → tar+sha256
+```
+
+- **Manual trigger only.** One command starts each pipeline.
+- **build:** populate a fresh workarea at the tag in a unique run dir, assemble in staging, write the MANIFEST.
+- **publish:** take a lock, `mv` atomically (same filesystem as staging), make the tree read-only, clean up on interrupt.
+- **diff:** list files added, removed and changed against the previous release; this feeds the release notes.
+- **promote:** refuses unless the approver is in `approvers.json`. The approver is recorded in the MANIFEST.
+- Heavy jobs go through `lsf.py` with blocking submission, so the job's exit code reaches the stage.
+- **Later:** an Airflow DAG with one task per stage, each calling `ip3d <stage>`. No logic in the DAG.
+
+Development pipeline, unchanged: ctrl (lint, synth, LEC) and phy (DRC/LVS, char, LEF) → ref integration → the shipped `verif/` on ref → kit.
+
+---
+
+## Open decisions (defaults in brackets)
+
+- Tag and version naming [`ip3d_<MAJOR.MINOR.PATCH>`]
+- Release area paths [TBD]
+- First vendor to implement [TBD]
+- Encrypted RTL (IEEE 1735)? [no]
+- One GA kit or per-customer kits? [one]
+- Bump map format [CSV, to be defined]
+
+## To confirm
+
+- Blocking `bsub` mode on your cluster (`man bsub`).
+- Whether the `mkdir` lock and atomic `mv` work on the release NFS.
+- Vendor commands for the 3D bump checks.
+- Python 3.6 really exists on customer hosts.
+
+---
+
+## Next
+
+1. Save this plan as `docs/ip3d_kit_plan.md`, and update "Languages and conventions" in the system prompt to the Python / Tcl / tcsh split.
+2. Settle the open decisions.
+3. Build in this order: `kit_spec.json` + stage contract + tests fixture, then `kit_integrity`, `build`, `qc`, `publish`, `diff`, `promote`, and finally the vendor checks.
+#@@END docs/ip3d_kit_plan.md
+#@@FILE docs/system_prompt.md mode=644 lines=144 eol=1 md5=16255b4873c14efcf9cf572404e444cf
+# IP Release & Flow Development Expert — System Prompt (v2)
+
+Oct 8, 2026 · @Peace
+
+## Role
+
+You work as a peer to a senior VLSI digital design engineer on IP release engineering, design database release pipelines, and EDA flow infrastructure. The user knows the domain, so skip introductory explanations unless asked.
+
+Your work: writing scripts and flow code, reviewing and debugging existing flows and releases, and advising on release and infrastructure design.
+
+## Domain scope
+
+- **IP release engineering.** Soft and hard IP deliverables: RTL, constraints, power intent, synthesis and LEC collateral, timing and physical views, documentation, release notes. Release QA gates, completeness checks, customer-facing packaging.
+- **Database release pipelines.** Stage handoffs (RTL → synthesis → PnR → signoff), versioned immutable releases, manifests and checksums, reproducibility, traceability to source, promotion between release tiers.
+- **Version control.** Cliosoft SOS: workareas, check-out and check-in, populating workareas, revision selection, release tags. Do not use or suggest git unless asked.
+- **Flow development.** EDA tool wrappers and dispatchers, run-directory management, logging and error detection, LSF batch and regression execution, environment and tool-version management.
+- **Software practice where it pays off.** Clear interfaces between scripts, idempotent re-runnable steps, fail-fast error handling, code someone else can maintain.
+
+## Languages and conventions
+
+| Language | Use for |
+| --- | --- |
+| Python 3.6+, standard library only | release and CI/CD tooling, the customer verification flow |
+| Tcl | inside EDA tool sessions only |
+| tcsh | environment setup files that users `source` only |
+
+Ask before adding any other language or any third-party Python package.
+
+### Python rules
+
+- **3.6 floor.** No dataclasses, walrus, f-string `=`, or `subprocess.run(capture_output=..., text=...)`; use `stdout=PIPE, universal_newlines=True`. Test under 3.6.
+- **Entry points** start with `#!/usr/bin/env python3`, use `argparse`, and return the stage exit codes: 0 pass, 1 check failed, 2 usage/config error, 3 tool/license/infra error.
+- **Subprocesses.** Never `shell=True` with built strings. Check every return code. Capture stdout and stderr to separate log files.
+- **Errors.** No bare `except`. Catch what you can handle; let the rest fail with a message naming the step and its log.
+- **Interrupts.** Handle SIGINT/SIGTERM to remove locks and partial outputs (`try/finally` plus a signal handler).
+- **Data** is JSON, not YAML (YAML is not in the standard library).
+
+### tcsh rules (setup files)
+
+Setup files start with `#!/bin/tcsh -f` (the `-f` keeps the user's `.cshrc` out) and use the `.csh` extension. These rules also apply when reviewing legacy tcsh scripts.
+
+- **Check `$status` immediately** after every command that matters. The next command overwrites it.
+- **No `-e` in the shebang.** Check status explicitly instead, because many commands return non-zero for non-failure cases (`grep` returns 1 on no match, 2 on error).
+- **Pipelines.** `$status` reflects the last command in a pipeline unless the `anyerror` variable is set. Decide which you need before trusting a pipeline's status; `anyerror` depends on the tcsh version, so confirm it on the target hosts.
+- **No short-circuit expansion.** `if ($?var && "$var" == x)` fails with "Undefined variable" when `var` is unset. Test existence in an outer `if`, compare in an inner one.
+- **Quoting.** Quote variables that may contain spaces. Use `$var:q` to preserve word lists and paths through expansion.
+- **`set` vs `setenv`.** Shell variables and environment variables stay distinct.
+- **Separate stderr.** tcsh cannot redirect stderr alone; use `( cmd > out.log ) >& err.log`.
+- **Interrupts.** Use `onintr` to remove lock files and partial outputs when a script is interrupted (Ctrl-C, the SIGINT that `bkill` sends first). LSF preemption usually suspends rather than kills, so `onintr` won't fire; confirm against your cluster's settings.
+- **No functions.** Put reusable logic in separate scripts with documented arguments and exit codes, never copy-pasted blocks.
+
+## Accuracy of tool and command syntax
+
+Never invent a `soscmd` subcommand or option, an LSF option, or an EDA tool command. If you are not certain a command exists or behaves as described, say so and give the way to confirm it: `soscmd help`, `man bsub`, or the tool's documentation. SOS behavior can depend on server configuration and release; say when an answer does.
+
+## Error detection
+
+A step passes only when all three checks pass. Exit status alone is not enough, because EDA tools often exit 0 after errors.
+
+1. The exit status is zero.
+2. A scan of the log finds no error patterns: tool errors, license checkout failures, missing files or libraries, unresolved references.
+3. Every expected output exists and is non-empty.
+
+For LSF jobs, the job's exit status must reach the dispatcher. Use a submission mode that waits for completion and returns the job's status, and confirm the mechanism with `man bsub` on the target cluster.
+
+A failure anywhere stops the pipeline with a non-zero exit and a message naming the failed step and its log. Never leave a failure in a log nobody reads.
+
+## Release principles
+
+Uphold each principle through the mechanism named, not just the intent.
+
+- **Immutable.** Build the release in a staging area, verify it there, then publish with a single atomic move into the release path and make the published tree read-only. Fixes go into a new release, never an edit to an old one.
+- **Traceable.** The manifest records the SOS tag or exact revisions, tool names and versions, the flow script revision, the command line, user, host, and timestamp.
+- **Verifiable.** The manifest lists a checksum per file. Verify it when the release is consumed, not only when it is created.
+- **Scripted.** Every release step is scripted and re-runnable. Flag any manual step as a defect.
+- **Concurrency-safe.** Anything touching a release area or shared run directory uses unique run directories, a lock (for example a `mkdir`-based lock directory), and cleanup on interrupt (signal handler in Python, `onintr` in tcsh). Confirm lock behavior on the actual filesystem, especially NFS.
+
+## Ask versus proceed
+
+When a request leaves open a decision that would change the code or the recommendation, ask before writing. Ask only about what changes the answer, and group the questions. Typical open decisions:
+
+- release tiers and who consumes each
+- SOS project and tagging conventions
+- directory layout
+- which checks gate a release
+- LSF queue and resource constraints
+- whether a script must be safe to run concurrently
+- checksum tool and algorithm
+
+When the intent is clear, proceed. When running unattended (for example in Claude Code with no user available), pick the most reasonable interpretation, continue, and record the assumption in the script header or at the top of the output.
+
+## Reviews and debug
+
+Order review findings by impact:
+
+1. anything that can ship a wrong or incomplete release
+2. loss of traceability or reproducibility
+3. errors that are hidden or swallowed, including tool errors behind a zero exit status
+4. hazards from concurrent runs or partially written outputs
+5. portability and environment assumptions
+6. maintainability
+
+For each finding, give the location, the consequence, and the fix.
+
+When debugging, state the hypothesis and the evidence behind it, citing log lines or command output. Where it's cheap, propose the smallest experiment that would confirm or rule it out.
+
+## Scope and proportion
+
+Change only what the task needs. List problems in unrelated scripts or flow setup separately at the end; don't fix them. When a tactical fix hides a structural problem, give the tactical fix and name the lasting one.
+
+Match the solution to the problem. A one-off check stays a short script. Don't build frameworks, configuration layers, or plugin systems the current task doesn't need.
+
+## Output
+
+Lead with the answer or the deliverable, in tight technical prose. Before any script, give a short block listing its assumptions, the inputs it reads, the outputs it writes, and its exit codes.
+
+Don't restate the question, add a closing summary, hedge without naming the specific uncertainty, or mix shell dialects (no bash syntax in tcsh).
+
+## Review notes (delete before use)
+
+The original was sound on intent; the rewrite turns its principles into mechanisms and fills the gaps most likely to let a bad release through.
+
+| Change | Why | Impact |
+| --- | --- | --- |
+| Added Error detection section (exit status + log scan + outputs) | EDA tools often exit 0 on errors; the original only said "check `$status`" | Hidden errors |
+| Immutability now means staging → verify → atomic move → read-only | Original stated the principle but not how a half-written release is prevented | Wrong/incomplete release |
+| Manifest fields listed explicitly | "Traceable" alone lets Claude omit tool versions or script revision | Traceability |
+| tcsh: non-short-circuit `$?var`, pipelines/`anyerror`, `grep` exit codes, `:q`, `onintr`, no `-e` | Real tcsh traps the original missed or understated | Hidden errors, concurrency |
+| Concurrency: unique run dirs, lock dir, interrupt cleanup | Original listed concurrency only as a question to ask | Concurrency |
+| LSF job status must reach the dispatcher | A dispatcher that ignores job status reports success on failed jobs | Hidden errors |
+| Script header now includes exit codes | tcsh has no functions, so exit codes are the script interface | Maintainability |
+| Merged the separate "avoid these patterns" list into its sections | It repeated rules stated earlier | Prompt length |
+
+### Open decisions
+
+- [x] **`.sh` extension for tcsh.** Resolved: tooling moved to Python; remaining tcsh setup files use `.csh`.
+- [ ] **No `-e` in the shebang** (tcsh setup files only now). I chose explicit `$status` checks because `-e` aborts on expected non-zero exits. Reverse this if you prefer fail-fast with documented exceptions.
+- [ ] **Checksum tool.** Added to the ask-list rather than fixed (e.g. `md5sum` vs `sha256sum`); fix it in the prompt if you have a standard.
+
+### Uncertainties to confirm
+
+- `anyerror` availability depends on tcsh version; check with `set anyerror` on your hosts.
+- Which `bsub` mode returns the job's exit status to the caller varies by LSF setup; confirm with `man bsub` on your cluster.
+- `mkdir`-based locking on NFS should be tested on your filesystem before you rely on it.
+#@@END docs/system_prompt.md
+#@@FILE flowgen/README.md mode=644 lines=53 eol=1 md5=16e41ae6b81120f6a8952fe221a1389c
+# flowgen
+
+Generates EDA run directories from one Tcl block config. Python 3.6+ (with tkinter), standard library only.
+
+The first supported tool is Synopsys Formality, with the `rtl2syn` flow: RTL reference vs. synthesized netlist.
+
+## Usage
+
+```
+flowgen.py block_config.tcl
+```
+
+This creates the following in the current directory. If the directory already exists, it is overwritten.
+
+```
+<yyyy_mm_dd_hh_mm_ss>_formality/
+    block_config.tcl      copy of the config used
+    run_rtl2syn.csh       run script (tcsh): sets up the env, runs fm_shell
+    rtl2syn/
+        rtl2syn.tcl       generated Formality script
+```
+
+Nothing is launched. To run a flow:
+
+```
+cd <yyyy_mm_dd_hh_mm_ss>_formality
+./run_rtl2syn.csh
+```
+
+The log goes to `rtl2syn/rtl2syn.log`, the reports to `rtl2syn/reports/`, and the result (PASS or FAIL) to `rtl2syn/rtl2syn.status`. The run script exits with 0 for PASS, 1 for FAIL, and 2 if the flow did not finish.
+
+## Config
+
+The config is plain Tcl and is evaluated by a real Tcl interpreter. See `examples/block_config.tcl` for every supported variable.
+
+Relative paths are resolved from the config file's own directory. Misspelled `FM_*` or `ENV_*` variables produce a warning, and missing input files produce warnings. Config errors are all reported together, and nothing is generated if there are any.
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `DESIGN` | yes | top module |
+| `FM_RTL_FILES` | yes | RTL file list |
+| `FM_SYN_NETLIST` | yes | synthesized netlist(s) |
+| `FM_LIBS` | yes | `.db` technology libraries |
+| `FM_FLOWS` | | flows to generate (default `rtl2syn`) |
+| `FM_RTL_FORMAT` | | `sverilog` (default), `verilog`, `vhdl` |
+| `FM_RTL_VCS_OPTS` | | options for `read_*verilog -vcs` |
+| `FM_SVF` | | SVF guidance file |
+| `FM_AUTO_SETUP` | | `synopsys_auto_setup` (default 1) |
+| `FM_APP_VAR(name)` | | extra `set_app_var` |
+| `FM_HOOK(point)` | | Tcl file to source at `setup`, `pre_match`, `pre_verify`, `post_verify` |
+| `FM_SHELL` | | Formality command (default `fm_shell`) |
+| `ENV_SOURCE` | | cshrc files sourced by the run script |
+| `ENV_SETENV(NAME)` | | environment variables set by the run script |
+#@@END flowgen/README.md
+#@@FILE flowgen/examples/block_config.tcl mode=644 lines=68 eol=1 md5=89b4fe566b3fd60a1bcfd49c8bdaca09
+# =============================================================================
+# block_config.tcl - block description read by flowgen.py
+#
+# Plain Tcl: use set, lists, arrays, $env(...), [glob ...], [file join ...].
+# Relative paths are relative to THIS file's directory.
+# Only the variables below are used; misspelled FM_*/ENV_* names are warned
+# about. Any other variable (e.g. ROOT below) is just a helper for you.
+#
+# Generate:   flowgen.py block_config.tcl
+# =============================================================================
+
+# Helper variable (not read by flowgen)
+set ROOT /proj/chip/blocks/my_block
+
+# -- Block --------------------------------------------------------------------
+# Top module name (required)
+set DESIGN my_block
+
+# -- Flows to generate ----------------------------------------------------------
+# Default: rtl2syn (RTL reference vs synthesized netlist)
+set FM_FLOWS {rtl2syn}
+
+# -- Tool and license environment (written into the run_*.csh scripts) -------
+# cshrc files to source, in order
+set ENV_SOURCE [list /tools/synopsys/setup.cshrc]
+# setenv NAME value
+set ENV_SETENV(SNPSLMD_LICENSE_FILE) 27020@lic-server1:27020@lic-server2
+# Formality executable (name on PATH or full path). Default: fm_shell
+# set FM_SHELL /tools/synopsys/fm/V-2023.12/bin/fm_shell
+
+# -- Reference: RTL (required) -----------------------------------------------
+# One of: sverilog (default), verilog, vhdl
+set FM_RTL_FORMAT sverilog
+set FM_RTL_FILES [list \
+    $ROOT/rtl/my_block_pkg.sv \
+    $ROOT/rtl/my_block_ctrl.sv \
+    $ROOT/rtl/my_block.sv \
+]
+# Or pick them up with a glob:
+# set FM_RTL_FILES [lsort [glob $ROOT/rtl/*.sv]]
+
+# Optional VCS-style options passed to read_sverilog/read_verilog -vcs
+# (include dirs, defines, -f filelists). Not used for vhdl.
+# set FM_RTL_VCS_OPTS "+incdir+$ROOT/rtl/include +define+SYNTHESIS"
+
+# -- Implementation: synthesized netlist (required) ----------------------------
+set FM_SYN_NETLIST [list $ROOT/syn/outputs/my_block.syn.v]
+
+# -- Synthesis guidance (optional, recommended) --------------------------------
+set FM_SVF $ROOT/syn/outputs/my_block.svf
+# synopsys_auto_setup (default 1). Set 0 to turn it off.
+# set FM_AUTO_SETUP 1
+
+# -- Technology libraries (required) ----------------------------------------------
+set FM_LIBS [list \
+    /pdk/stdcell/db/stdcell_tt_0p80v_25c.db \
+]
+
+# -- Extra Formality app vars: set_app_var <name> <value> -------------------------
+# set FM_APP_VAR(hdlin_unresolved_modules)  black_box
+# set FM_APP_VAR(verification_timeout_limit) 4:0:0
+
+# -- Hooks: your own Tcl files, sourced at fixed points in the flow ------------
+#   setup       after app vars, before anything is read
+#   pre_match   designs read and set_top done (set_constant, set_black_box, ...)
+#   pre_verify  after match (set_user_match, ...)
+#   post_verify after verify (extra reports)
+# set FM_HOOK(pre_match) $ROOT/fm/constraints.tcl
+#@@END flowgen/examples/block_config.tcl
+#@@FILE flowgen/flowgen.py mode=755 lines=430 eol=1 md5=345a5846d4456ef6aa79bc23552cfc08
+#!/usr/bin/env python3
+"""flowgen - generate EDA run directories from a Tcl block config.
+
+Usage:
+    flowgen.py block_config.tcl
+
+Creates  ./<yyyy_mm_dd_hh_mm_ss>_formality/  in the current directory with
+one run script per flow (run_<flow>.csh) and one sub-directory per flow
+holding the generated Formality Tcl script. Nothing is launched; run the
+scripts manually.
+
+The config is plain Tcl, evaluated by a real Tcl interpreter (tkinter), so
+variables, lists, arrays, $env(...) and [glob ...] all work. Relative paths
+in the config are relative to the config file's own directory.
+
+Requires Python 3.6+ built with tkinter. Standard library only.
+"""
+
+import argparse
+import datetime
+import os
+import re
+import shutil
+import stat
+import sys
+
+try:
+    import tkinter
+except ImportError:
+    sys.exit("flowgen: ERROR: this Python has no tkinter (needed to read the "
+             "Tcl config). Use a Python built with tkinter.")
+
+
+SUPPORTED_FLOWS = ("rtl2syn",)
+RTL_READERS = {"sverilog": "read_sverilog", "verilog": "read_verilog", "vhdl": "read_vhdl"}
+HOOK_POINTS = ("setup", "pre_match", "pre_verify", "post_verify")
+
+# Every variable flowgen understands. Unknown FM_*/ENV_* names produce a
+# warning (catches typos); any other name is treated as a user helper var.
+KNOWN_VARS = (
+    "DESIGN",
+    "FM_FLOWS", "FM_SHELL", "FM_RTL_FORMAT", "FM_RTL_FILES", "FM_RTL_VCS_OPTS",
+    "FM_SYN_NETLIST", "FM_SVF", "FM_LIBS", "FM_AUTO_SETUP", "FM_APP_VAR", "FM_HOOK",
+    "ENV_SOURCE", "ENV_SETENV",
+)
+
+IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+class ConfigError(Exception):
+    pass
+
+
+# --------------------------------------------------------------------------
+# Reading the Tcl config
+# --------------------------------------------------------------------------
+
+def load_tcl_config(path):
+    """Source the config in a fresh Tcl interpreter.
+
+    Returns {name: str} for scalars and {name: {key: str}} for arrays,
+    covering only the global variables the config created.
+    """
+    tcl = tkinter.Tcl()
+    before = set(tcl.splitlist(tcl.eval("info globals")))
+
+    old_cwd = os.getcwd()
+    os.chdir(os.path.dirname(path))      # relative paths/globs resolve here
+    try:
+        tcl.call("source", path)
+    except tkinter.TclError as exc:
+        detail = tcl.eval("set ::errorInfo")
+        raise ConfigError("Tcl error while reading %s: %s\n%s" % (path, exc, detail))
+    finally:
+        os.chdir(old_cwd)
+
+    values = {}
+    for name in sorted(set(tcl.splitlist(tcl.eval("info globals"))) - before):
+        if not IDENT_RE.match(name):
+            continue  # flowgen variables are always plain identifiers
+        if tcl.eval("array exists ::%s" % name) == "1":
+            flat = tcl.splitlist(tcl.eval("array get ::%s" % name))
+            values[name] = dict(zip(flat[0::2], flat[1::2]))
+        else:
+            values[name] = tcl.eval("set ::%s" % name)
+    return values, tcl
+
+
+class Config(object):
+    """Typed, validated view of block_config.tcl. Collects all problems."""
+
+    def __init__(self, path):
+        self.path = os.path.abspath(path)
+        self.dir = os.path.dirname(self.path)
+        self.errors = []
+        self.warnings = []
+        self._raw, self._tcl = load_tcl_config(self.path)
+
+        for name in sorted(self._raw):
+            if name.startswith(("FM_", "ENV_")) and name not in KNOWN_VARS:
+                self.warnings.append("unknown variable '%s' ignored (typo?)" % name)
+
+        self.design = self.scalar("DESIGN", required=True)
+        self.flows = self.tcl_list("FM_FLOWS", default=["rtl2syn"])
+        for flow in self.flows:
+            if flow not in SUPPORTED_FLOWS:
+                self.errors.append("FM_FLOWS: unknown flow '%s' (supported: %s)"
+                                   % (flow, ", ".join(SUPPORTED_FLOWS)))
+        self.fm_shell = self.scalar("FM_SHELL", default="fm_shell")
+
+        self.rtl_format = self.scalar("FM_RTL_FORMAT", default="sverilog")
+        if self.rtl_format not in RTL_READERS:
+            self.errors.append("FM_RTL_FORMAT: '%s' is not one of %s"
+                               % (self.rtl_format, ", ".join(sorted(RTL_READERS))))
+        self.rtl_files = self.paths("FM_RTL_FILES", required=True)
+        self.rtl_vcs_opts = self.scalar("FM_RTL_VCS_OPTS", default="")
+        if self.rtl_vcs_opts and self.rtl_format == "vhdl":
+            self.errors.append("FM_RTL_VCS_OPTS only applies to verilog/sverilog")
+
+        self.syn_netlist = self.paths("FM_SYN_NETLIST", required=True)
+        self.libs = self.paths("FM_LIBS", required=True)
+        svf = self.paths("FM_SVF")
+        self.svf = svf[0] if svf else ""
+        if len(svf) > 1:
+            self.errors.append("FM_SVF: give one SVF file, got %d" % len(svf))
+        self.auto_setup = self.boolean("FM_AUTO_SETUP", default=True)
+
+        self.app_vars = self.array("FM_APP_VAR")
+        for key in self.app_vars:
+            if not IDENT_RE.match(key):
+                self.errors.append("FM_APP_VAR(%s): not a valid app var name" % key)
+
+        self.hooks = {}
+        for key, value in sorted(self.array("FM_HOOK").items()):
+            if key not in HOOK_POINTS:
+                self.errors.append("FM_HOOK(%s): unknown hook point (valid: %s)"
+                                   % (key, ", ".join(HOOK_POINTS)))
+            else:
+                self.hooks[key] = self.resolve("FM_HOOK(%s)" % key, value)
+
+        self.env_source = self.paths("ENV_SOURCE")
+        self.env_setenv = self.array("ENV_SETENV")
+        for key in self.env_setenv:
+            if not IDENT_RE.match(key):
+                self.errors.append("ENV_SETENV(%s): not a valid environment variable name" % key)
+
+    # -- typed getters ------------------------------------------------------
+
+    def _get(self, name, kind):
+        value = self._raw.get(name)
+        if value is None:
+            return None
+        is_array = isinstance(value, dict)
+        if is_array != (kind == "array"):
+            self.errors.append("%s must be %s" % (name, "an array" if kind == "array"
+                                                  else "a plain variable, not an array"))
+            return None
+        return value
+
+    def scalar(self, name, default=None, required=False):
+        value = self._get(name, "scalar")
+        if value is None or value == "":
+            if required:
+                self.errors.append("%s is required" % name)
+            return default
+        return value
+
+    def tcl_list(self, name, default=None, required=False):
+        value = self._get(name, "scalar")
+        items = list(self._tcl.splitlist(value)) if value else []
+        if not items:
+            if required:
+                self.errors.append("%s is required (a Tcl list)" % name)
+            return list(default or [])
+        return items
+
+    def array(self, name):
+        return self._get(name, "array") or {}
+
+    def boolean(self, name, default):
+        value = self._get(name, "scalar")
+        if value is None or value == "":
+            return default
+        try:
+            return bool(self._tcl.getboolean(value))
+        except tkinter.TclError:
+            self.errors.append("%s: '%s' is not a boolean (use 1/0)" % (name, value))
+            return default
+
+    def resolve(self, label, path):
+        """Absolute path (relative to config dir); warn if missing."""
+        full = os.path.normpath(os.path.join(self.dir, os.path.expanduser(path)))
+        if not os.path.exists(full):
+            self.warnings.append("%s: file not found: %s" % (label, full))
+        return full
+
+    def paths(self, name, required=False):
+        return [self.resolve(name, p) for p in self.tcl_list(name, required=required)]
+
+
+# --------------------------------------------------------------------------
+# Quoting helpers
+# --------------------------------------------------------------------------
+
+_TCL_BARE = re.compile(r"^[A-Za-z0-9_./:+=@%,~-]+$")
+_TCL_SPECIAL = re.compile(r'([\\{}\[\]$";# \t])')
+
+
+def tcl_word(text):
+    """Quote text as one Tcl word (also valid as a Tcl list element)."""
+    if _TCL_BARE.match(text):
+        return text
+    if text and not re.search(r"[{}\\]", text):
+        return "{%s}" % text
+    return _TCL_SPECIAL.sub(r"\\\1", text).replace("\n", "\\n") or "{}"
+
+
+def tcl_list_block(items, indent="    "):
+    """A braced, one-item-per-line Tcl list."""
+    return "{\n%s\n}" % "\n".join(indent + tcl_word(i) for i in items)
+
+
+def csh_word(label, text):
+    """Single-quote a value for csh; reject what csh cannot quote safely."""
+    if re.search(r"['!\n]", text):
+        raise ConfigError("%s: value may not contain ' or ! or newlines for csh: %r"
+                          % (label, text))
+    return "'%s'" % text
+
+
+# --------------------------------------------------------------------------
+# Formality script generation
+# --------------------------------------------------------------------------
+
+def section(title):
+    return ["", "# " + ("-- %s " % title).ljust(74, "-")]
+
+
+def hook_lines(cfg, point):
+    if point in cfg.hooks:
+        return ["# Hook '%s' (FM_HOOK(%s))" % (point, point),
+                "source %s" % tcl_word(cfg.hooks[point])]
+    return ["# Hook point '%s': set FM_HOOK(%s) in the config to source a file here."
+            % (point, point)]
+
+
+def gen_fm_rtl2syn(cfg, flow, stamp):
+    reader = RTL_READERS[cfg.rtl_format]
+    lines = [
+        "# " + "=" * 74,
+        "# Formality equivalence check: %s (RTL reference vs synthesized netlist)" % flow,
+        "#   Block     : %s" % cfg.design,
+        "#   Generated : %s by flowgen.py from %s" % (stamp, cfg.path),
+        "#   Run       : ../run_%s.csh   (do not edit; regenerate instead)" % flow,
+        "# " + "=" * 74,
+        "",
+        "set FLOW   %s" % tcl_word(flow),
+        "set DESIGN %s" % tcl_word(cfg.design),
+        "file mkdir reports",
+        "file delete -force ${FLOW}.status",
+    ]
+
+    lines += section("Setup")
+    lines.append("set_app_var synopsys_auto_setup %s" % ("true" if cfg.auto_setup else "false"))
+    for name in sorted(cfg.app_vars):
+        lines.append("set_app_var %s %s" % (name, tcl_word(cfg.app_vars[name])))
+    lines += hook_lines(cfg, "setup")
+
+    lines += section("Synthesis guidance (SVF)")
+    if cfg.svf:
+        lines.append("set_svf %s" % tcl_word(cfg.svf))
+    else:
+        lines.append("# No FM_SVF given: running without synthesis guidance.")
+
+    lines += section("Technology libraries (shared by reference and implementation)")
+    lines.append("read_db %s" % tcl_list_block(cfg.libs))
+
+    lines += section("Reference: RTL")
+    rtl_cmd = "%s -r %s" % (reader, tcl_list_block(cfg.rtl_files))
+    if cfg.rtl_vcs_opts:
+        rtl_cmd += " -vcs %s" % tcl_word(cfg.rtl_vcs_opts)
+    lines += [rtl_cmd, "set_top r:/WORK/$DESIGN"]
+
+    lines += section("Implementation: synthesized netlist")
+    lines += ["read_verilog -i -netlist %s" % tcl_list_block(cfg.syn_netlist),
+              "set_top i:/WORK/$DESIGN"]
+
+    lines += [""] + hook_lines(cfg, "pre_match")
+
+    lines += section("Match")
+    lines += ["match",
+              "report_unmatched_points > reports/${FLOW}.unmatched.rpt"]
+
+    lines += [""] + hook_lines(cfg, "pre_verify")
+
+    lines += section("Verify")
+    lines += [
+        "set verify_ok [verify]",
+        "if {$verify_ok} {",
+        "    set result PASS",
+        "} else {",
+        "    set result FAIL",
+        "    report_failing_points > reports/${FLOW}.failing.rpt",
+        "    report_aborted_points > reports/${FLOW}.aborted.rpt",
+        "    analyze_points -failing > reports/${FLOW}.analyze.rpt",
+        "}",
+    ]
+
+    lines += [""] + hook_lines(cfg, "post_verify")
+
+    lines += section("Save session and finish")
+    lines += [
+        "save_session -replace ${FLOW}",
+        "set fh [open ${FLOW}.status w]",
+        "puts $fh $result",
+        "close $fh",
+        'puts "flowgen: $FLOW verification result: $result"',
+        "exit",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+FLOW_GENERATORS = {"rtl2syn": gen_fm_rtl2syn}
+
+
+def gen_run_script(cfg, flow, stamp):
+    lines = [
+        "#!/bin/tcsh -f",
+        "# Generated %s by flowgen.py from %s" % (stamp, cfg.path),
+        "# Runs Formality flow '%s' for block '%s'. Usage: ./run_%s.csh" % (flow, cfg.design, flow),
+        "",
+        "set flow = %s" % flow,
+        'set here = "`dirname $0`"',
+        'cd "$here/$flow"',
+        "",
+        "# Tool and license environment (ENV_SOURCE / ENV_SETENV)",
+    ]
+    for path in cfg.env_source:
+        lines.append("source %s" % csh_word("ENV_SOURCE", path))
+    for name in sorted(cfg.env_setenv):
+        lines.append("setenv %s %s" % (name, csh_word("ENV_SETENV(%s)" % name,
+                                                       cfg.env_setenv[name])))
+    if not (cfg.env_source or cfg.env_setenv):
+        lines.append("# (none configured: fm_shell must already be on PATH)")
+    lines += [
+        "",
+        "# stdin from /dev/null: if the script stops on an error, fm_shell exits",
+        "# instead of waiting at its prompt.",
+        "%s -f ${flow}.tcl < /dev/null |& tee ${flow}.log" % cfg.fm_shell,
+        "",
+        "if ( ! -e ${flow}.status ) then",
+        '    echo "flowgen: $flow did not finish. See $flow/${flow}.log"',
+        "    exit 2",
+        "endif",
+        'set result = "`cat ${flow}.status`"',
+        'echo "flowgen: $flow result: $result  (log: $flow/${flow}.log, reports: $flow/reports/)"',
+        'if ( "$result" != "PASS" ) exit 1',
+        "exit 0",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------
+# Main
+# --------------------------------------------------------------------------
+
+def write_file(path, text, executable=False):
+    with open(path, "w") as fh:
+        fh.write(text)
+    if executable:
+        mode = os.stat(path).st_mode
+        os.chmod(path, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Generate a Formality run directory from a Tcl block config.")
+    parser.add_argument("config", help="block config file, e.g. block_config.tcl")
+    args = parser.parse_args(argv)
+
+    if not os.path.isfile(args.config):
+        sys.exit("flowgen: ERROR: config file not found: %s" % args.config)
+
+    try:
+        cfg = Config(args.config)
+    except ConfigError as exc:
+        sys.exit("flowgen: ERROR: %s" % exc)
+
+    for msg in cfg.warnings:
+        print("flowgen: WARNING: %s" % msg)
+    if cfg.errors:
+        for msg in cfg.errors:
+            print("flowgen: ERROR: %s" % msg)
+        sys.exit("flowgen: %d error(s) in %s; nothing generated." % (len(cfg.errors), cfg.path))
+
+    now = datetime.datetime.now()
+    stamp = now.strftime("%Y-%m-%d %H:%M:%S")
+    run_dir = os.path.abspath(now.strftime("%Y_%m_%d_%H_%M_%S") + "_formality")
+
+    try:
+        # Render everything before touching the disk, so a bad value
+        # never leaves a half-written run directory.
+        outputs = {}
+        for flow in cfg.flows:
+            outputs[flow] = (FLOW_GENERATORS[flow](cfg, flow, stamp),
+                             gen_run_script(cfg, flow, stamp))
+    except ConfigError as exc:
+        sys.exit("flowgen: ERROR: %s" % exc)
+
+    if os.path.isdir(run_dir):
+        print("flowgen: WARNING: %s exists; overwriting" % run_dir)
+        shutil.rmtree(run_dir)
+    os.makedirs(run_dir)
+    shutil.copy2(cfg.path, os.path.join(run_dir, "block_config.tcl"))  # record of inputs
+
+    for flow, (fm_tcl, run_csh) in outputs.items():
+        os.makedirs(os.path.join(run_dir, flow))
+        write_file(os.path.join(run_dir, flow, flow + ".tcl"), fm_tcl)
+        write_file(os.path.join(run_dir, "run_%s.csh" % flow), run_csh, executable=True)
+
+    print("flowgen: generated %s" % run_dir)
+    for flow in cfg.flows:
+        print("flowgen:   %-10s run with: %s" % (flow, os.path.join(run_dir, "run_%s.csh" % flow)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+#@@END flowgen/flowgen.py
+#@@FILE tools/pack.py mode=755 lines=111 eol=1 md5=7cc174551cb2e56dc1bc5cae68ee37df
+#!/usr/bin/env python3
+"""pack - concatenate a repo's files into one plain-text bundle.
+
+Usage:
+    pack.py [-o BUNDLE] [ROOT]
+
+ROOT defaults to the git repo containing the current directory (or the
+current directory if not in git). In a git repo only tracked files are
+packed; otherwise every file under ROOT except .git/ is packed.
+
+The bundle is plain text, so it survives copy/paste and CRLF line endings.
+Recreate the files with unpack.py (which is itself inside the bundle).
+
+Bundle format:
+    #@@PACK 1
+    #@@FILE <path> mode=<octal> lines=<n> eol=<0|1> md5=<hex>
+    <n lines of file content>
+    #@@END <path>
+
+Python 3.6+, standard library only.
+"""
+
+import argparse
+import hashlib
+import os
+import subprocess
+import sys
+
+
+def repo_root():
+    try:
+        out = subprocess.check_output(["git", "rev-parse", "--show-toplevel"],
+                                      stderr=subprocess.DEVNULL)
+        return out.decode().strip()
+    except (OSError, subprocess.CalledProcessError):
+        return os.getcwd()
+
+
+def list_files(root):
+    """Sorted relative paths with '/' separators."""
+    try:
+        out = subprocess.check_output(["git", "-C", root, "ls-files", "-z"],
+                                      stderr=subprocess.DEVNULL)
+        files = [f for f in out.decode("utf-8").split("\0") if f]
+    except (OSError, subprocess.CalledProcessError):
+        files = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d != ".git"]
+            for name in filenames:
+                rel = os.path.relpath(os.path.join(dirpath, name), root)
+                files.append(rel.replace(os.sep, "/"))
+    return sorted(f for f in files if os.path.isfile(os.path.join(root, f)))
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Pack repo files into one text bundle.")
+    parser.add_argument("root", nargs="?", help="directory to pack (default: git repo root)")
+    parser.add_argument("-o", "--output", help="bundle file (default: <root name>_bundle.txt)")
+    args = parser.parse_args(argv)
+
+    root = os.path.abspath(args.root or repo_root())
+    output = os.path.abspath(args.output or os.path.basename(root) + "_bundle.txt")
+
+    chunks = ["#@@PACK 1\n"]
+    packed, non_ascii, skipped = 0, [], []
+    for rel in list_files(root):
+        path = os.path.join(root, rel)
+        if os.path.abspath(path) == output:
+            continue
+        with open(path, "rb") as fh:
+            data = fh.read()
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            skipped.append(rel)          # binary file: not supported
+            continue
+        if "\0" in text:
+            skipped.append(rel)
+            continue
+        if text.startswith("#@@PACK"):
+            continue                     # never pack a bundle inside a bundle
+        if any(ord(c) > 127 for c in text):
+            non_ascii.append(rel)
+
+        text = text.replace("\r\n", "\n")
+        eol = 1 if text.endswith("\n") or not text else 0
+        lines = text.split("\n")
+        if eol:
+            lines = lines[:-1]           # drop the empty piece after the last newline
+        mode = os.stat(path).st_mode & 0o777
+        md5 = hashlib.md5(text.encode("utf-8")).hexdigest()
+
+        chunks.append("#@@FILE %s mode=%03o lines=%d eol=%d md5=%s\n"
+                      % (rel, mode, len(lines), eol, md5))
+        chunks.extend(line + "\n" for line in lines)
+        chunks.append("#@@END %s\n" % rel)
+        packed += 1
+
+    with open(output, "w", encoding="utf-8", newline="\n") as fh:
+        fh.writelines(chunks)
+
+    for rel in skipped:
+        print("pack: WARNING: skipped binary file: %s" % rel)
+    for rel in non_ascii:
+        print("pack: WARNING: non-ASCII characters in: %s" % rel)
+    print("pack: %d files from %s -> %s" % (packed, root, output))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+#@@END tools/pack.py
+#@@FILE tools/unpack.py mode=755 lines=89 eol=1 md5=ad897e988e980e269462c0e5e0c1d5c7
+#!/usr/bin/env python3
+"""unpack - recreate files from a bundle made by pack.py.
+
+Usage:
+    unpack.py BUNDLE [-d DIR] [--list]
+
+Files are written under DIR (default: current directory), overwriting any
+existing files with the same path. Every file is checked against its MD5
+before anything is written; a damaged bundle writes nothing.
+
+Python 3.6+, standard library only.
+"""
+
+import argparse
+import hashlib
+import os
+import re
+import sys
+
+HEADER_RE = re.compile(r"^#@@FILE (\S+) mode=([0-7]{3}) lines=(\d+) eol=([01]) md5=([0-9a-f]{32})$")
+
+
+class BundleError(Exception):
+    pass
+
+
+def parse(bundle_path):
+    """Return [(path, mode, text)] after validating the whole bundle."""
+    with open(bundle_path, encoding="utf-8") as fh:
+        lines = [l.rstrip("\r\n") for l in fh]
+    if not lines or lines[0] != "#@@PACK 1":
+        raise BundleError("not a pack bundle (missing '#@@PACK 1' first line)")
+
+    files, i = [], 1
+    while i < len(lines):
+        if lines[i] == "":
+            i += 1                      # tolerate blank lines between files
+            continue
+        m = HEADER_RE.match(lines[i])
+        if not m:
+            raise BundleError("line %d: expected #@@FILE header, got: %r" % (i + 1, lines[i][:80]))
+        path, mode, count, eol, md5 = m.groups()
+        count = int(count)
+        if path.startswith("/") or ".." in path.split("/"):
+            raise BundleError("line %d: unsafe path: %s" % (i + 1, path))
+
+        body = lines[i + 1:i + 1 + count]
+        end = i + 1 + count
+        if len(body) != count or end >= len(lines) or lines[end] != "#@@END " + path:
+            raise BundleError("%s: truncated or damaged (missing #@@END)" % path)
+
+        text = "\n".join(body) + ("\n" if eol == "1" and count else "")
+        if hashlib.md5(text.encode("utf-8")).hexdigest() != md5:
+            raise BundleError("%s: MD5 mismatch (content was changed in transit)" % path)
+        files.append((path, int(mode, 8), text))
+        i = end + 1
+    return files
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Recreate files from a pack.py bundle.")
+    parser.add_argument("bundle", help="bundle file made by pack.py")
+    parser.add_argument("-d", "--dir", default=".", help="output directory (default: .)")
+    parser.add_argument("--list", action="store_true", help="only list the files")
+    args = parser.parse_args(argv)
+
+    try:
+        files = parse(args.bundle)
+    except (OSError, UnicodeDecodeError, BundleError) as exc:
+        sys.exit("unpack: ERROR: %s" % exc)
+
+    for path, mode, text in files:
+        if args.list:
+            print("%03o %s" % (mode, path))
+            continue
+        dest = os.path.join(args.dir, *path.split("/"))
+        if os.path.dirname(dest):
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
+        os.chmod(dest, mode)
+
+    if not args.list:
+        print("unpack: %d files -> %s" % (len(files), os.path.abspath(args.dir)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+#@@END tools/unpack.py
