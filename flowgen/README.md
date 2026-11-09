@@ -14,10 +14,12 @@ This creates the following in the current directory. If the directory already ex
 
 ```
 <yyyy_mm_dd_hh_mm_ss>_<TOP_DESIGN>_formality/
-    block.config.tcl      copy of the config used
-    run_rtl2syn.csh       run script (tcsh): sets up the env, runs fm_shell
-    rtl2syn/
-        rtl2syn.tcl       generated Formality script
+  block.config.tcl      copy of the config used
+  run_rtl2syn.csh       run script (tcsh): sets up the env, runs fm_shell
+  rtl2syn.tcl           generated Formality script
+  rtl2syn/              where Formality runs
+    logs/               empty, filled in by the tool
+    reports/            empty, filled in by the tool
 ```
 
 Nothing is launched. To run a flow:
@@ -27,7 +29,7 @@ cd <yyyy_mm_dd_hh_mm_ss>_<TOP_DESIGN>_formality
 ./run_rtl2syn.csh
 ```
 
-The log goes to `rtl2syn/rtl2syn.log`, the reports to `rtl2syn/reports/`, and the result (PASS or FAIL) to `rtl2syn/rtl2syn.status`. The run script exits with 0 for PASS, 1 for FAIL, and 2 if the flow did not finish.
+The log goes to `rtl2syn/logs/rtl2syn.log`, the reports to `rtl2syn/reports/`, and the result (PASS or FAIL) to `rtl2syn/rtl2syn.status`. The run script exits with 0 for PASS, 1 for FAIL, and 2 if the flow did not finish.
 
 ## Config
 

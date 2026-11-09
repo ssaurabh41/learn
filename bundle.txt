@@ -1,5 +1,5 @@
 #@@PACK 3
-#@@FILE flowgen/README.md mode=644 enc=text lines=63 eol=1 md5=ebc617dcdc2eae846d0d7666a0981971
+#@@FILE flowgen/README.md mode=644 enc=text lines=65 eol=1 md5=c9177d6e795b63cddf1402629d265af4
 # flowgen
 
 Generates EDA run directories from one Tcl block config. Python 3.6+ (with tkinter), standard library only.
@@ -16,10 +16,12 @@ This creates the following in the current directory. If the directory already ex
 
 ```
 <yyyy_mm_dd_hh_mm_ss>_<TOP_DESIGN>_formality/
-    block.config.tcl      copy of the config used
-    run_rtl2syn.csh       run script (tcsh): sets up the env, runs fm_shell
-    rtl2syn/
-        rtl2syn.tcl       generated Formality script
+  block.config.tcl      copy of the config used
+  run_rtl2syn.csh       run script (tcsh): sets up the env, runs fm_shell
+  rtl2syn.tcl           generated Formality script
+  rtl2syn/              where Formality runs
+    logs/               empty, filled in by the tool
+    reports/            empty, filled in by the tool
 ```
 
 Nothing is launched. To run a flow:
@@ -29,7 +31,7 @@ cd <yyyy_mm_dd_hh_mm_ss>_<TOP_DESIGN>_formality
 ./run_rtl2syn.csh
 ```
 
-The log goes to `rtl2syn/rtl2syn.log`, the reports to `rtl2syn/reports/`, and the result (PASS or FAIL) to `rtl2syn/rtl2syn.status`. The run script exits with 0 for PASS, 1 for FAIL, and 2 if the flow did not finish.
+The log goes to `rtl2syn/logs/rtl2syn.log`, the reports to `rtl2syn/reports/`, and the result (PASS or FAIL) to `rtl2syn/rtl2syn.status`. The run script exits with 0 for PASS, 1 for FAIL, and 2 if the flow did not finish.
 
 ## Config
 
@@ -64,102 +66,113 @@ Block configs live in the top-level `common_files/` directory. `unpack.py` creat
 | `ENV_SOURCE` | | cshrc files sourced by the run script |
 | `ENV_SETENV(NAME)` | | environment variables set by the run script |
 #@@END flowgen/README.md
-#@@FILE flowgen/configs/block_template.config.tcl mode=644 enc=text lines=195 eol=1 md5=e4efa20f650aeebf025703e01eeeb9d9
+#@@FILE flowgen/configs/block_template.config.tcl mode=644 enc=text lines=216 eol=1 md5=996cb5a9bfb3991b2bd659154bbadf43
 # Block configuration template for flowgen.py
 #
 # This file lists every setting flowgen understands. Copy it to your golden
 # configs directory and fill it in, for example:
-#     common_files/block.config.tcl
+#   common_files/block.config.tcl
 #
 # How to write values
-#   Single value : set NAME "value"
-#   List         : set NAME {
-#                      "first item"
-#                      "second item"
-#                  }
-#   Empty        : set NAME ""   or   set NAME {}   means "not used"
+#   Single value: set NAME "value"
+#   List:         set NAME {
+#                   "first item"
+#                   "second item"
+#                 }
+#   Not used:     set NAME ""  or  set NAME {}
 #
-# You can use your own helper variables (like BLOCK_ROOT below) and
+# You can use your own helper variables (like PROJ_ROOT below) and
 # environment variables ($env(HOME)) inside values and list items.
 # Relative paths are relative to the directory this file really lives in
 # (common_files/), even when it is used through a flowgen/configs/ link.
 #
 # Generate the run directory with:
-#     flowgen.py configs/block.config.tcl
+#   flowgen.py configs/block.config.tcl
 
 
-# Helper variable, not read by flowgen. Use it to shorten the paths below.
-# Example: set BLOCK_ROOT "/proj/chip/block"
-set BLOCK_ROOT "/proj/chip/block"
+# Project root directory. Helper only, not read by flowgen; use it to
+# shorten the paths below.
+# Example:
+#   set PROJ_ROOT "/proj/chip"
+set PROJ_ROOT "/proj/chip"
 
 
 # DESIGN
 
 # Name of the top-level design (the top module). Required.
-# Example: set TOP_DESIGN "block"
+# Example:
+#   set TOP_DESIGN "block"
 set TOP_DESIGN "block"
 
 
 # FLOWS TO GENERATE
 
 # Which flows to generate. Default is rtl2syn (RTL against synthesized netlist).
-# Example: set FLOWS {
-#              "rtl2syn"
-#          }
+# Example:
+#   set FLOWS {
+#     "rtl2syn"
+#   }
 set FLOWS {
-    "rtl2syn"
+  "rtl2syn"
 }
 
 
 # RTL (reference design)
 
 # Language of the RTL: "sverilog" (default), "verilog" or "vhdl".
-# Example: set RTL_FORMAT "sverilog"
+# Example:
+#   set RTL_FORMAT "sverilog"
 set RTL_FORMAT "sverilog"
 
 # RTL source files. Required. Each item is either a source file or a
 # file list ending in .f (one file path per line, // or # for comments;
 # relative paths inside a .f file are relative to the .f file).
-# Example (files):     set RTL_FILES {
-#                          "$BLOCK_ROOT/rtl/block_pkg.sv"
-#                          "$BLOCK_ROOT/rtl/block.sv"
-#                      }
-# Example (file list): set RTL_FILES {
-#                          "$BLOCK_ROOT/rtl/source.f"
-#                      }
+# Example with files:
+#   set RTL_FILES {
+#     "$PROJ_ROOT/block/rtl/block_pkg.sv"
+#     "$PROJ_ROOT/block/rtl/block.sv"
+#   }
+# Example with a file list:
+#   set RTL_FILES {
+#     "$PROJ_ROOT/block/rtl/source.f"
+#   }
 set RTL_FILES {
-    "$BLOCK_ROOT/rtl/source.f"
+  "$PROJ_ROOT/block/rtl/source.f"
 }
 
 # Include directories for `include files. Optional. Not for vhdl.
-# Example: set RTL_INCDIRS {
-#              "$BLOCK_ROOT/rtl/include"
-#          }
+# Example:
+#   set RTL_INCDIRS {
+#     "$PROJ_ROOT/block/rtl/include"
+#   }
 set RTL_INCDIRS {}
 
 # Verilog macros to define, as NAME or NAME=VALUE. Optional. Not for vhdl.
-# Example: set RTL_DEFINES {
-#              "SYNTHESIS"
-#              "DATA_WIDTH=32"
-#          }
+# Example:
+#   set RTL_DEFINES {
+#     "SYNTHESIS"
+#     "DATA_WIDTH=32"
+#   }
 set RTL_DEFINES {}
 
 
 # NETLISTS
 
 # Synthesized netlist files (or .f file lists). Required for rtl2syn.
-# Example: set SYN_FILES {
-#              "$BLOCK_ROOT/syn/outputs/block.syn.v"
-#          }
+# Example:
+#   set SYN_FILES {
+#     "$PROJ_ROOT/block/syn/outputs/block.syn.v"
+#   }
 set SYN_FILES {
-    "$BLOCK_ROOT/syn/outputs/block.syn.v"
+  "$PROJ_ROOT/block/syn/outputs/block.syn.v"
 }
 
 # Place-and-route (APR) netlist files (or .f file lists). Optional.
 # Not used by rtl2syn; kept for netlist-to-APR checks and other flows.
-# Example: set APR_FILES {
-#              "$BLOCK_ROOT/apr/outputs/block.apr.v"
-#          }
+# Example:
+#   set APR_FILES {
+#     "$PROJ_ROOT/block/apr/outputs/block.apr.v"
+#   }
 set APR_FILES {}
 
 
@@ -167,55 +180,62 @@ set APR_FILES {}
 
 # SVF guidance file written by synthesis. Optional, but recommended for
 # Formality: it makes matching faster and more reliable.
-# Example: set SVF_FILE "$BLOCK_ROOT/syn/outputs/block.svf"
-set SVF_FILE "$BLOCK_ROOT/syn/outputs/block.svf"
+# Example:
+#   set SVF_FILE "$PROJ_ROOT/block/syn/outputs/block.svf"
+set SVF_FILE "$PROJ_ROOT/block/syn/outputs/block.svf"
 
 # Timing constraint (SDC) files. Optional. Not used by Formality; kept for
 # synthesis, timing and other flows.
-# Example: set SDC_FILES {
-#              "$BLOCK_ROOT/constraints/block.sdc"
-#          }
+# Example:
+#   set SDC_FILES {
+#     "$PROJ_ROOT/block/constraints/block.sdc"
+#   }
 set SDC_FILES {}
 
 # Power intent (UPF) files. Optional. Not used by flowgen yet.
-# Example: set UPF_FILES {
-#              "$BLOCK_ROOT/upf/block.upf"
-#          }
+# Example:
+#   set UPF_FILES {
+#     "$PROJ_ROOT/block/upf/block.upf"
+#   }
 set UPF_FILES {}
 
 
 # LIBRARIES AND SIMULATION MODELS
 
 # Format of the files in LIB_FILES: "db" (default) or "lib".
-# "db"  reads compiled .db files (read_db).
-# "lib" reads Liberty .lib or .lib.gz files (read_lib).
-# Example: set LIB_FORMAT "db"
+#   "db"  reads compiled .db files (read_db).
+#   "lib" reads Liberty .lib or .lib.gz files (read_lib).
+# Example:
+#   set LIB_FORMAT "db"
 set LIB_FORMAT "db"
 
 # Technology library files: standard cells, memories, hard IPs. Required.
 # Give full file names; only these files are read.
-# Example: set LIB_FILES {
-#              "/pdk/stdcell/db/stdcell_tt_0p80v_25c.db"
-#              "/ip/sram/db/sram_1rw_tt_0p80v_25c.db"
-#          }
+# Example:
+#   set LIB_FILES {
+#     "/pdk/stdcell/db/stdcell_tt_0p80v_25c.db"
+#     "/ip/sram/db/sram_1rw_tt_0p80v_25c.db"
+#   }
 set LIB_FILES {
-    "/pdk/stdcell/db/stdcell_tt_0p80v_25c.db"
+  "/pdk/stdcell/db/stdcell_tt_0p80v_25c.db"
 }
 
 # Verilog simulation models (.v) for hard IPs, memories or cells that have
 # no library model. Optional. Read into both reference and implementation.
 # Items can also be .f file lists.
-# Example: set SIM_FILES {
-#              "/ip/pll/verilog/pll_top.v"
-#          }
+# Example:
+#   set SIM_FILES {
+#     "/ip/pll/verilog/pll_top.v"
+#   }
 set SIM_FILES {}
 
 # Modules to treat as black boxes (only their ports are compared).
 # Optional. Nothing is black boxed unless it is listed here.
-# Example: set BLACKBOX_MODULES {
-#              "pll_top"
-#              "sram_1rw"
-#          }
+# Example:
+#   set BLACKBOX_MODULES {
+#     "pll_top"
+#     "sram_1rw"
+#   }
 set BLACKBOX_MODULES {}
 
 
@@ -226,15 +246,15 @@ set BLACKBOX_MODULES {}
 # use their own name, for example "dc" or "primetime".
 
 # Command that starts the tool. Optional. Default for Formality: fm_shell
-# Example: set TOOL_CMD(formality) "/tools/synopsys/fm/V-2023.12/bin/fm_shell"
-# set TOOL_CMD(formality) "fm_shell"
+# Example:
+#   set TOOL_CMD(formality) "/tools/synopsys/fm/V-2023.12/bin/fm_shell"
 
 # Tool variables, written into the tool script as set_app_var. Add any
 # Formality variable you need here, one line each. Optional.
 # synopsys_auto_setup is "true" unless you set it here.
-# Example: set TOOL_SETTINGS(formality,hdlin_unresolved_modules) "black_box"
-# Example: set TOOL_SETTINGS(formality,verification_timeout_limit) "4:0:0"
-# set TOOL_SETTINGS(formality,synopsys_auto_setup) "true"
+# Examples:
+#   set TOOL_SETTINGS(formality,hdlin_unresolved_modules) "black_box"
+#   set TOOL_SETTINGS(formality,verification_timeout_limit) "4:0:0"
 
 # Your own Tcl files, sourced at fixed points in the Formality script.
 # Optional. Hook points:
@@ -242,7 +262,8 @@ set BLACKBOX_MODULES {}
 #   pre_match    designs read and top set (set_constant, set_user_match, ...)
 #   pre_verify   after matching
 #   post_verify  after verification (extra reports)
-# Example: set TOOL_HOOKS(formality,pre_match) "$BLOCK_ROOT/fm/constants.tcl"
+# Example:
+#   set TOOL_HOOKS(formality,pre_match) "$PROJ_ROOT/block/fm/constants.tcl"
 
 
 # RUN ENVIRONMENT
@@ -250,18 +271,20 @@ set BLACKBOX_MODULES {}
 # Written into the run_<flow>.csh scripts before the tool starts.
 
 # Shell setup files to source, in order. Optional.
-# Example: set ENV_SOURCE {
-#              "/tools/synopsys/setup.cshrc"
-#          }
+# Example:
+#   set ENV_SOURCE {
+#     "/tools/synopsys/setup.cshrc"
+#   }
 set ENV_SOURCE {
-    "/tools/synopsys/setup.cshrc"
+  "/tools/synopsys/setup.cshrc"
 }
 
 # Environment variables to set, one line each. Optional.
-# Example: set ENV_SETENV(SNPSLMD_LICENSE_FILE) "27020@lic-server1"
+# Example:
+#   set ENV_SETENV(SNPSLMD_LICENSE_FILE) "27020@lic-server1"
 set ENV_SETENV(SNPSLMD_LICENSE_FILE) "27020@lic-server1"
 #@@END flowgen/configs/block_template.config.tcl
-#@@FILE flowgen/flowgen.py mode=755 enc=text lines=617 eol=1 md5=dee618ed05f05a80ee423e3b10f4d732
+#@@FILE flowgen/flowgen.py mode=755 enc=text lines=596 eol=1 md5=5cb7ea15f249a3e9a046fa9aad0d859a
 #!/usr/bin/env python3
 """flowgen - generate EDA run directories from a Tcl block config.
 
@@ -287,7 +310,8 @@ Examples:
 Output:
     ./<yyyy_mm_dd_hh_mm_ss>_<TOP_DESIGN>_formality/ in the current directory,
     with one run script per flow (run_<flow>.csh) and one sub-directory per
-    flow holding the generated Formality Tcl script. Nothing is launched;
+    flow where the tool runs (with empty logs/ and reports/), plus the
+    generated Formality Tcl script (<flow>.tcl). Nothing is launched;
     run the scripts manually. An existing directory of the same name is
     overwritten.
 
@@ -630,7 +654,7 @@ def tcl_word(text):
     return _TCL_SPECIAL.sub(r"\\\1", text).replace("\n", "\\n") or "{}"
 
 
-def tcl_list_block(items, indent="    "):
+def tcl_list_block(items, indent="  "):
     """A braced, one-item-per-line Tcl list."""
     if not items:
         return "{}"
@@ -652,12 +676,11 @@ def section(title):
 
 
 def hook_lines(cfg, point):
-    hooks = cfg.tool_hooks.get(FM, {})
-    if point in hooks:
-        return ["# Hook '%s' from TOOL_HOOKS(%s,%s)" % (point, FM, point),
-                "source %s" % tcl_word(hooks[point])]
-    return ["# Hook point '%s': set TOOL_HOOKS(%s,%s) in the config to source a file here."
-            % (point, FM, point)]
+    """'source <file>' for TOOL_HOOKS(formality,<point>), or nothing."""
+    hook = cfg.tool_hooks.get(FM, {}).get(point)
+    if not hook:
+        return []
+    return ["", "# Hook: %s" % point, "source %s" % tcl_word(hook)]
 
 
 def vcs_option(fileset):
@@ -666,39 +689,30 @@ def vcs_option(fileset):
     return " -vcs %s" % tcl_word(" ".join(opts)) if opts else ""
 
 
-def gen_fm_rtl2syn(cfg, flow, stamp):
+def gen_fm_rtl2syn(cfg, flow):
+    """Formality script. Runs from <run_dir>/<flow>/, next to logs/ and reports/."""
     settings = dict(cfg.tool_settings.get(FM, {}))
     settings.setdefault("synopsys_auto_setup", "true")
-    lines = [
-        "# Formality equivalence check: %s (RTL reference vs synthesized netlist)" % flow,
-        "# Block     : %s" % cfg.top,
-        "# Generated : %s by flowgen.py from %s" % (stamp, cfg.path),
-        "# Run       : ../run_%s.csh   (do not edit; regenerate instead)" % flow,
-    ]
+    lines = ["# Formality %s: RTL vs synthesized netlist for %s" % (flow, cfg.top)]
     if cfg.forced:
-        lines.append("# WARNING   : generated with --force; these input problems were ignored:")
+        lines.append("# WARNING: generated with --force, these input problems were ignored:")
         lines += ["#   " + msg for msg in cfg.forced]
     lines += [
         "",
-        "set FLOW       %s" % tcl_word(flow),
+        "set FLOW %s" % tcl_word(flow),
         "set TOP_DESIGN %s" % tcl_word(cfg.top),
-        "file mkdir reports",
         "file delete -force ${FLOW}.status",
     ]
 
-    lines += section("Setup: app vars from TOOL_SETTINGS(%s,*)" % FM)
-    for name in sorted(settings):
-        lines.append("set_app_var %s %s" % (name, tcl_word(settings[name])))
+    lines += section("Setup")
+    lines += ["set_app_var %s %s" % (n, tcl_word(settings[n])) for n in sorted(settings)]
     lines += hook_lines(cfg, "setup")
 
-    lines += section("Synthesis guidance (SVF)")
     if cfg.svf:
+        lines += section("Synthesis guidance")
         lines.append("set_svf %s" % tcl_word(cfg.svf))
-    else:
-        lines.append("# No SVF_FILE given: running without synthesis guidance.")
 
-    lines += section("Technology libraries, shared by reference and implementation "
-                     "(LIB_FORMAT %s)" % cfg.lib_format)
+    lines += section("Libraries")
     lines += ["%s %s" % (LIB_READERS[cfg.lib_format], tcl_word(lib)) for lib in cfg.libs]
 
     lines += section("Reference: RTL")
@@ -712,48 +726,43 @@ def gen_fm_rtl2syn(cfg, flow, stamp):
     if cfg.sim.files:
         lines.append("read_verilog -i %s" % tcl_list_block(cfg.sim.files))
 
-    lines += section("Black boxes (BLACKBOX_MODULES)")
     if cfg.blackboxes:
+        lines += section("Black boxes")
         for module in cfg.blackboxes:
             lines += ["set_black_box r:/WORK/%s" % tcl_word(module),
                       "set_black_box i:/WORK/%s" % tcl_word(module)]
-    else:
-        lines.append("# None.")
 
     lines += section("Top-level designs")
     lines += ["set_top r:/WORK/$TOP_DESIGN",
               "set_top i:/WORK/$TOP_DESIGN"]
-
-    lines += [""] + hook_lines(cfg, "pre_match")
+    lines += hook_lines(cfg, "pre_match")
 
     lines += section("Match")
     lines += ["match",
               "report_unmatched_points > reports/${FLOW}.unmatched.rpt"]
-
-    lines += [""] + hook_lines(cfg, "pre_verify")
+    lines += hook_lines(cfg, "pre_verify")
 
     lines += section("Verify")
     lines += [
         "set verify_ok [verify]",
         "if {$verify_ok} {",
-        "    set result PASS",
+        "  set result PASS",
         "} else {",
-        "    set result FAIL",
-        "    report_failing_points > reports/${FLOW}.failing.rpt",
-        "    report_aborted_points > reports/${FLOW}.aborted.rpt",
-        "    analyze_points -failing > reports/${FLOW}.analyze.rpt",
+        "  set result FAIL",
+        "  report_failing_points > reports/${FLOW}.failing.rpt",
+        "  report_aborted_points > reports/${FLOW}.aborted.rpt",
+        "  analyze_points -failing > reports/${FLOW}.analyze.rpt",
         "}",
     ]
+    lines += hook_lines(cfg, "post_verify")
 
-    lines += [""] + hook_lines(cfg, "post_verify")
-
-    lines += section("Save session and finish")
+    lines += section("Finish")
     lines += [
         "save_session -replace ${FLOW}",
         "set fh [open ${FLOW}.status w]",
         "puts $fh $result",
         "close $fh",
-        'puts "flowgen: $FLOW verification result: $result"',
+        'puts "$FLOW result: $result"',
         "exit",
         "",
     ]
@@ -763,38 +772,32 @@ def gen_fm_rtl2syn(cfg, flow, stamp):
 FLOW_GENERATORS = {"rtl2syn": gen_fm_rtl2syn}
 
 
-def gen_run_script(cfg, flow, stamp):
+def gen_run_script(cfg, flow):
     tool_cmd = cfg.tool_cmd.get(FM, "").strip() or "fm_shell"
     lines = [
         "#!/bin/tcsh -f",
-        "# Generated %s by flowgen.py from %s" % (stamp, cfg.path),
-        "# Runs Formality flow '%s' for block '%s'. Usage: ./run_%s.csh" % (flow, cfg.top, flow),
+        "# Run Formality %s for %s" % (flow, cfg.top),
         "",
         "set flow = %s" % flow,
         'set here = "`dirname $0`"',
         'cd "$here/$flow"',
         "",
-        "# Tool and license environment (ENV_SOURCE, ENV_SETENV)",
+        "# Environment",
     ]
-    for path in cfg.env_source:
-        lines.append("source %s" % csh_word("ENV_SOURCE", path))
-    for name in sorted(cfg.env_setenv):
-        lines.append("setenv %s %s" % (name, csh_word("ENV_SETENV(%s)" % name,
-                                                       cfg.env_setenv[name])))
-    if not (cfg.env_source or cfg.env_setenv):
-        lines.append("# (none configured: %s must already be on PATH)" % tool_cmd)
+    lines += ["source %s" % csh_word("ENV_SOURCE", p) for p in cfg.env_source]
+    lines += ["setenv %s %s" % (n, csh_word("ENV_SETENV(%s)" % n, cfg.env_setenv[n]))
+              for n in sorted(cfg.env_setenv)]
     lines += [
         "",
-        "# stdin from /dev/null: if the script stops on an error, the tool exits",
-        "# instead of waiting at its prompt.",
-        "%s -f ${flow}.tcl < /dev/null |& tee ${flow}.log" % tool_cmd,
+        "# Run the tool. Input from /dev/null so it exits if the script stops early.",
+        "%s -f ../${flow}.tcl < /dev/null |& tee logs/${flow}.log" % tool_cmd,
         "",
         "if ( ! -e ${flow}.status ) then",
-        '    echo "flowgen: $flow did not finish. See $flow/${flow}.log"',
-        "    exit 2",
+        '  echo "$flow did not finish. See $flow/logs/${flow}.log"',
+        "  exit 2",
         "endif",
         'set result = "`cat ${flow}.status`"',
-        'echo "flowgen: $flow result: $result  (log: $flow/${flow}.log, reports: $flow/reports/)"',
+        'echo "$flow result: $result (logs: $flow/logs, reports: $flow/reports)"',
         'if ( "$result" != "PASS" ) exit 1',
         "exit 0",
         "",
@@ -842,7 +845,6 @@ def main(argv=None):
                  % (len(cfg.errors), cfg.path, hint))
 
     now = datetime.datetime.now()
-    stamp = now.strftime("%Y-%m-%d %H:%M:%S")
     block = re.sub(r"[^A-Za-z0-9_.-]", "_", cfg.top)   # safe as a directory name
     run_dir = os.path.abspath("%s_%s_formality" % (now.strftime("%Y_%m_%d_%H_%M_%S"), block))
 
@@ -851,8 +853,7 @@ def main(argv=None):
         # never leaves a half-written run directory.
         outputs = {}
         for flow in cfg.flows:
-            outputs[flow] = (FLOW_GENERATORS[flow](cfg, flow, stamp),
-                             gen_run_script(cfg, flow, stamp))
+            outputs[flow] = (FLOW_GENERATORS[flow](cfg, flow), gen_run_script(cfg, flow))
     except ConfigError as exc:
         sys.exit("flowgen: ERROR: %s" % exc)
 
@@ -864,8 +865,9 @@ def main(argv=None):
     shutil.copy2(cfg.path, os.path.join(run_dir, os.path.basename(cfg.path)))
 
     for flow, (fm_tcl, run_csh) in outputs.items():
-        os.makedirs(os.path.join(run_dir, flow))
-        write_file(os.path.join(run_dir, flow, flow + ".tcl"), fm_tcl)
+        os.makedirs(os.path.join(run_dir, flow, "logs"))      # filled in by the tool
+        os.makedirs(os.path.join(run_dir, flow, "reports"))
+        write_file(os.path.join(run_dir, flow + ".tcl"), fm_tcl)
         write_file(os.path.join(run_dir, "run_%s.csh" % flow), run_csh, executable=True)
 
     print("flowgen: generated %s" % run_dir)

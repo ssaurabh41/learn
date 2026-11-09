@@ -23,7 +23,8 @@ Examples:
 Output:
     ./<yyyy_mm_dd_hh_mm_ss>_<TOP_DESIGN>_formality/ in the current directory,
     with one run script per flow (run_<flow>.csh) and one sub-directory per
-    flow holding the generated Formality Tcl script. Nothing is launched;
+    flow where the tool runs (with empty logs/ and reports/), plus the
+    generated Formality Tcl script (<flow>.tcl). Nothing is launched;
     run the scripts manually. An existing directory of the same name is
     overwritten.
 
@@ -366,7 +367,7 @@ def tcl_word(text):
     return _TCL_SPECIAL.sub(r"\\\1", text).replace("\n", "\\n") or "{}"
 
 
-def tcl_list_block(items, indent="    "):
+def tcl_list_block(items, indent="  "):
     """A braced, one-item-per-line Tcl list."""
     if not items:
         return "{}"
@@ -388,12 +389,11 @@ def section(title):
 
 
 def hook_lines(cfg, point):
-    hooks = cfg.tool_hooks.get(FM, {})
-    if point in hooks:
-        return ["# Hook '%s' from TOOL_HOOKS(%s,%s)" % (point, FM, point),
-                "source %s" % tcl_word(hooks[point])]
-    return ["# Hook point '%s': set TOOL_HOOKS(%s,%s) in the config to source a file here."
-            % (point, FM, point)]
+    """'source <file>' for TOOL_HOOKS(formality,<point>), or nothing."""
+    hook = cfg.tool_hooks.get(FM, {}).get(point)
+    if not hook:
+        return []
+    return ["", "# Hook: %s" % point, "source %s" % tcl_word(hook)]
 
 
 def vcs_option(fileset):
@@ -402,39 +402,30 @@ def vcs_option(fileset):
     return " -vcs %s" % tcl_word(" ".join(opts)) if opts else ""
 
 
-def gen_fm_rtl2syn(cfg, flow, stamp):
+def gen_fm_rtl2syn(cfg, flow):
+    """Formality script. Runs from <run_dir>/<flow>/, next to logs/ and reports/."""
     settings = dict(cfg.tool_settings.get(FM, {}))
     settings.setdefault("synopsys_auto_setup", "true")
-    lines = [
-        "# Formality equivalence check: %s (RTL reference vs synthesized netlist)" % flow,
-        "# Block     : %s" % cfg.top,
-        "# Generated : %s by flowgen.py from %s" % (stamp, cfg.path),
-        "# Run       : ../run_%s.csh   (do not edit; regenerate instead)" % flow,
-    ]
+    lines = ["# Formality %s: RTL vs synthesized netlist for %s" % (flow, cfg.top)]
     if cfg.forced:
-        lines.append("# WARNING   : generated with --force; these input problems were ignored:")
+        lines.append("# WARNING: generated with --force, these input problems were ignored:")
         lines += ["#   " + msg for msg in cfg.forced]
     lines += [
         "",
-        "set FLOW       %s" % tcl_word(flow),
+        "set FLOW %s" % tcl_word(flow),
         "set TOP_DESIGN %s" % tcl_word(cfg.top),
-        "file mkdir reports",
         "file delete -force ${FLOW}.status",
     ]
 
-    lines += section("Setup: app vars from TOOL_SETTINGS(%s,*)" % FM)
-    for name in sorted(settings):
-        lines.append("set_app_var %s %s" % (name, tcl_word(settings[name])))
+    lines += section("Setup")
+    lines += ["set_app_var %s %s" % (n, tcl_word(settings[n])) for n in sorted(settings)]
     lines += hook_lines(cfg, "setup")
 
-    lines += section("Synthesis guidance (SVF)")
     if cfg.svf:
+        lines += section("Synthesis guidance")
         lines.append("set_svf %s" % tcl_word(cfg.svf))
-    else:
-        lines.append("# No SVF_FILE given: running without synthesis guidance.")
 
-    lines += section("Technology libraries, shared by reference and implementation "
-                     "(LIB_FORMAT %s)" % cfg.lib_format)
+    lines += section("Libraries")
     lines += ["%s %s" % (LIB_READERS[cfg.lib_format], tcl_word(lib)) for lib in cfg.libs]
 
     lines += section("Reference: RTL")
@@ -448,48 +439,43 @@ def gen_fm_rtl2syn(cfg, flow, stamp):
     if cfg.sim.files:
         lines.append("read_verilog -i %s" % tcl_list_block(cfg.sim.files))
 
-    lines += section("Black boxes (BLACKBOX_MODULES)")
     if cfg.blackboxes:
+        lines += section("Black boxes")
         for module in cfg.blackboxes:
             lines += ["set_black_box r:/WORK/%s" % tcl_word(module),
                       "set_black_box i:/WORK/%s" % tcl_word(module)]
-    else:
-        lines.append("# None.")
 
     lines += section("Top-level designs")
     lines += ["set_top r:/WORK/$TOP_DESIGN",
               "set_top i:/WORK/$TOP_DESIGN"]
-
-    lines += [""] + hook_lines(cfg, "pre_match")
+    lines += hook_lines(cfg, "pre_match")
 
     lines += section("Match")
     lines += ["match",
               "report_unmatched_points > reports/${FLOW}.unmatched.rpt"]
-
-    lines += [""] + hook_lines(cfg, "pre_verify")
+    lines += hook_lines(cfg, "pre_verify")
 
     lines += section("Verify")
     lines += [
         "set verify_ok [verify]",
         "if {$verify_ok} {",
-        "    set result PASS",
+        "  set result PASS",
         "} else {",
-        "    set result FAIL",
-        "    report_failing_points > reports/${FLOW}.failing.rpt",
-        "    report_aborted_points > reports/${FLOW}.aborted.rpt",
-        "    analyze_points -failing > reports/${FLOW}.analyze.rpt",
+        "  set result FAIL",
+        "  report_failing_points > reports/${FLOW}.failing.rpt",
+        "  report_aborted_points > reports/${FLOW}.aborted.rpt",
+        "  analyze_points -failing > reports/${FLOW}.analyze.rpt",
         "}",
     ]
+    lines += hook_lines(cfg, "post_verify")
 
-    lines += [""] + hook_lines(cfg, "post_verify")
-
-    lines += section("Save session and finish")
+    lines += section("Finish")
     lines += [
         "save_session -replace ${FLOW}",
         "set fh [open ${FLOW}.status w]",
         "puts $fh $result",
         "close $fh",
-        'puts "flowgen: $FLOW verification result: $result"',
+        'puts "$FLOW result: $result"',
         "exit",
         "",
     ]
@@ -499,38 +485,32 @@ def gen_fm_rtl2syn(cfg, flow, stamp):
 FLOW_GENERATORS = {"rtl2syn": gen_fm_rtl2syn}
 
 
-def gen_run_script(cfg, flow, stamp):
+def gen_run_script(cfg, flow):
     tool_cmd = cfg.tool_cmd.get(FM, "").strip() or "fm_shell"
     lines = [
         "#!/bin/tcsh -f",
-        "# Generated %s by flowgen.py from %s" % (stamp, cfg.path),
-        "# Runs Formality flow '%s' for block '%s'. Usage: ./run_%s.csh" % (flow, cfg.top, flow),
+        "# Run Formality %s for %s" % (flow, cfg.top),
         "",
         "set flow = %s" % flow,
         'set here = "`dirname $0`"',
         'cd "$here/$flow"',
         "",
-        "# Tool and license environment (ENV_SOURCE, ENV_SETENV)",
+        "# Environment",
     ]
-    for path in cfg.env_source:
-        lines.append("source %s" % csh_word("ENV_SOURCE", path))
-    for name in sorted(cfg.env_setenv):
-        lines.append("setenv %s %s" % (name, csh_word("ENV_SETENV(%s)" % name,
-                                                       cfg.env_setenv[name])))
-    if not (cfg.env_source or cfg.env_setenv):
-        lines.append("# (none configured: %s must already be on PATH)" % tool_cmd)
+    lines += ["source %s" % csh_word("ENV_SOURCE", p) for p in cfg.env_source]
+    lines += ["setenv %s %s" % (n, csh_word("ENV_SETENV(%s)" % n, cfg.env_setenv[n]))
+              for n in sorted(cfg.env_setenv)]
     lines += [
         "",
-        "# stdin from /dev/null: if the script stops on an error, the tool exits",
-        "# instead of waiting at its prompt.",
-        "%s -f ${flow}.tcl < /dev/null |& tee ${flow}.log" % tool_cmd,
+        "# Run the tool. Input from /dev/null so it exits if the script stops early.",
+        "%s -f ../${flow}.tcl < /dev/null |& tee logs/${flow}.log" % tool_cmd,
         "",
         "if ( ! -e ${flow}.status ) then",
-        '    echo "flowgen: $flow did not finish. See $flow/${flow}.log"',
-        "    exit 2",
+        '  echo "$flow did not finish. See $flow/logs/${flow}.log"',
+        "  exit 2",
         "endif",
         'set result = "`cat ${flow}.status`"',
-        'echo "flowgen: $flow result: $result  (log: $flow/${flow}.log, reports: $flow/reports/)"',
+        'echo "$flow result: $result (logs: $flow/logs, reports: $flow/reports)"',
         'if ( "$result" != "PASS" ) exit 1',
         "exit 0",
         "",
@@ -578,7 +558,6 @@ def main(argv=None):
                  % (len(cfg.errors), cfg.path, hint))
 
     now = datetime.datetime.now()
-    stamp = now.strftime("%Y-%m-%d %H:%M:%S")
     block = re.sub(r"[^A-Za-z0-9_.-]", "_", cfg.top)   # safe as a directory name
     run_dir = os.path.abspath("%s_%s_formality" % (now.strftime("%Y_%m_%d_%H_%M_%S"), block))
 
@@ -587,8 +566,7 @@ def main(argv=None):
         # never leaves a half-written run directory.
         outputs = {}
         for flow in cfg.flows:
-            outputs[flow] = (FLOW_GENERATORS[flow](cfg, flow, stamp),
-                             gen_run_script(cfg, flow, stamp))
+            outputs[flow] = (FLOW_GENERATORS[flow](cfg, flow), gen_run_script(cfg, flow))
     except ConfigError as exc:
         sys.exit("flowgen: ERROR: %s" % exc)
 
@@ -600,8 +578,9 @@ def main(argv=None):
     shutil.copy2(cfg.path, os.path.join(run_dir, os.path.basename(cfg.path)))
 
     for flow, (fm_tcl, run_csh) in outputs.items():
-        os.makedirs(os.path.join(run_dir, flow))
-        write_file(os.path.join(run_dir, flow, flow + ".tcl"), fm_tcl)
+        os.makedirs(os.path.join(run_dir, flow, "logs"))      # filled in by the tool
+        os.makedirs(os.path.join(run_dir, flow, "reports"))
+        write_file(os.path.join(run_dir, flow + ".tcl"), fm_tcl)
         write_file(os.path.join(run_dir, "run_%s.csh" % flow), run_csh, executable=True)
 
     print("flowgen: generated %s" % run_dir)
