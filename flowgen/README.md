@@ -7,13 +7,13 @@ The first supported tool is Synopsys Formality, with the `rtl2syn` flow: RTL ref
 ## Usage
 
 ```
-flowgen.py configs/my_block.config.tcl
+flowgen.py configs/block.config.tcl
 ```
 
 This creates the following in the current directory. If the directory already exists, it is overwritten.
 
 ```
-<yyyy_mm_dd_hh_mm_ss>_<DESIGN>_formality/
+<yyyy_mm_dd_hh_mm_ss>_<TOP_DESIGN>_formality/
     block.config.tcl      copy of the config used
     run_rtl2syn.csh       run script (tcsh): sets up the env, runs fm_shell
     rtl2syn/
@@ -23,7 +23,7 @@ This creates the following in the current directory. If the directory already ex
 Nothing is launched. To run a flow:
 
 ```
-cd <yyyy_mm_dd_hh_mm_ss>_<DESIGN>_formality
+cd <yyyy_mm_dd_hh_mm_ss>_<TOP_DESIGN>_formality
 ./run_rtl2syn.csh
 ```
 
@@ -31,25 +31,33 @@ The log goes to `rtl2syn/rtl2syn.log`, the reports to `rtl2syn/reports/`, and th
 
 ## Config
 
-The config is plain Tcl and is evaluated by a real Tcl interpreter. See `block_template.config.tcl` for every supported variable, and copy from it to start a new block config.
+The config is plain Tcl. Start from `block_template.config.tcl`, which explains every setting with examples. The usual name is `block.config.tcl`, but any name works.
+
+- Single values go in double quotes: `set TOP_DESIGN "block"`.
+- Lists go in braces, one double-quoted item per line. flowgen expands `$VARIABLES` inside list items.
+- Relative paths are resolved from the config file's real directory (`common_files/`, even when run through a `flowgen/configs/` link).
+- File lists (`RTL_FILES`, `SYN_FILES`, `APR_FILES`, `SIM_FILES`) accept `.f` files. A `.f` file holds one path per line, with `//` or `#` comments. It may also contain `-f`, `-v`, `+incdir+` and `+define+`.
+- Misspelled setting names and missing files produce warnings. Errors are all reported together, and nothing is generated if there are any.
 
 Block configs live in the top-level `common_files/` directory. `unpack.py` creates `flowgen/configs/` with a link to each file in `common_files/`; re-run it with `--force` after adding a config. `common_files/` holds your golden configs on your own machine: it is never packed into `bundle.txt`, and `unpack.py` never touches it.
 
-Relative paths are resolved from the config file's real directory (`common_files/`, even when run through a `flowgen/configs/` link). Misspelled `FM_*` or `ENV_*` variables produce a warning, and missing input files produce warnings. Config errors are all reported together, and nothing is generated if there are any.
-
-| Variable | Required | Meaning |
+| Setting | Required | Meaning |
 |---|---|---|
-| `DESIGN` | yes | top module |
-| `FM_RTL_FILES` | yes | RTL file list |
-| `FM_SYN_NETLIST` | yes | synthesized netlist(s) |
-| `FM_LIBS` | yes | `.db` technology libraries |
-| `FM_FLOWS` | | flows to generate (default `rtl2syn`) |
-| `FM_RTL_FORMAT` | | `sverilog` (default), `verilog`, `vhdl` |
-| `FM_RTL_VCS_OPTS` | | options for `read_*verilog -vcs` |
-| `FM_SVF` | | SVF guidance file |
-| `FM_AUTO_SETUP` | | `synopsys_auto_setup` (default 1) |
-| `FM_APP_VAR(name)` | | extra `set_app_var` |
-| `FM_HOOK(point)` | | Tcl file to source at `setup`, `pre_match`, `pre_verify`, `post_verify` |
-| `FM_SHELL` | | Formality command (default `fm_shell`) |
+| `TOP_DESIGN` | yes | top module |
+| `FLOWS` | | flows to generate (default `rtl2syn`) |
+| `RTL_FORMAT` | | `sverilog` (default), `verilog`, `vhdl` |
+| `RTL_FILES` | yes | RTL files or `.f` lists |
+| `RTL_INCDIRS`, `RTL_DEFINES` | | include dirs, macros |
+| `SYN_FILES` | yes (rtl2syn) | synthesized netlist files or `.f` lists |
+| `APR_FILES` | | APR netlist files (for future flows) |
+| `SVF_FILE` | | synthesis guidance file |
+| `SDC_FILES`, `UPF_FILES` | | constraints, power intent (not used by Formality yet) |
+| `LIB_FORMAT` | | `db` (default) or `lib` |
+| `LIB_FILES` | yes | technology library files |
+| `SIM_FILES` | | Verilog models for hard IPs and cells |
+| `BLACKBOX_MODULES` | | modules to black box |
+| `TOOL_CMD(<tool>)` | | command that starts the tool (default `fm_shell`) |
+| `TOOL_SETTINGS(<tool>,<name>)` | | tool variables (`set_app_var` for Formality) |
+| `TOOL_HOOKS(<tool>,<point>)` | | your Tcl files at `setup`, `pre_match`, `pre_verify`, `post_verify` |
 | `ENV_SOURCE` | | cshrc files sourced by the run script |
 | `ENV_SETENV(NAME)` | | environment variables set by the run script |
