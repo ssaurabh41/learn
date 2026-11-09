@@ -2,13 +2,16 @@
 """unpack - recreate files from a bundle made by pack.py.
 
 Usage:
-    unpack.py BUNDLE [-d DIR] [-force] [--list]
+    unpack.py BUNDLE [-d DIR] [--force] [--list]
 
-Files are written under DIR (default: current directory). If a top-level
-directory (or file) from the bundle, e.g. flowgen/, already exists in DIR,
-unpack stops with an error and changes nothing. With -force (or --force)
-those existing top-level entries are removed first, then recreated from the
-bundle, so no stale files are left behind.
+Files are written under DIR (default: current directory), then symbolic
+links (e.g. flowgen/configs -> ../common_files) are created.
+
+If a top-level directory from the bundle (flowgen/, common_files/) already
+exists in DIR, unpack stops with an error and changes nothing. With --force
+those directories are removed first and recreated from the bundle, so no
+stale files are left behind. Top-level files (pack.py, unpack.py) are
+simply overwritten.
 
 Every file is checked against its MD5 before anything is written; a damaged
 bundle writes nothing.
@@ -25,6 +28,7 @@ import re
 import shutil
 import sys
 
+LINK_RE = re.compile(r"^#@@LINK (\S+) -> (\S+)$")
 HEADER_RE = re.compile(r"^#@@FILE (\S+) mode=([0-7]{3}) enc=(text|b64) lines=(\d+) "
                        r"eol=([01]) md5=([0-9a-f]{32})$")
 
@@ -48,24 +52,33 @@ def read_bundle(bundle_path):
 
 
 def parse(bundle_path):
-    """Return [(path, mode, bytes)] after validating the whole bundle."""
+    """Return ([(path, mode, bytes)], [(path, target)]) after validating the whole bundle."""
     lines = read_bundle(bundle_path).splitlines()
-    if not lines or lines[0] != "#@@PACK 2":
+    if not lines or lines[0] != "#@@PACK 3":
         raise BundleError("not a pack.py bundle, or made by a different pack.py version "
-                          "(first line must be '#@@PACK 2')")
+                          "(first line must be '#@@PACK 3')")
 
-    files, i = [], 1
+    files, links, i = [], [], 1
     while i < len(lines):
         if lines[i].strip() == "":
             i += 1                      # tolerate blank lines between files
+            continue
+        link = LINK_RE.match(lines[i].rstrip())
+        if link:
+            path, target = link.groups()
+            check_path(path, i)
+            resolved = os.path.normpath(os.path.join(os.path.dirname(path), target))
+            if target.startswith("/") or resolved == ".." or resolved.startswith("../"):
+                raise BundleError("line %d: unsafe link target: %s -> %s" % (i + 1, path, target))
+            links.append((path, target))
+            i += 1
             continue
         m = HEADER_RE.match(lines[i].rstrip())
         if not m:
             raise BundleError("line %d: expected #@@FILE header, got: %r" % (i + 1, lines[i][:80]))
         path, mode, enc, count, eol, md5 = m.groups()
         count = int(count)
-        if path.startswith("/") or ".." in path.split("/"):
-            raise BundleError("line %d: unsafe path: %s" % (i + 1, path))
+        check_path(path, i)
 
         body = lines[i + 1:i + 1 + count]
         end = i + 1 + count
@@ -83,35 +96,43 @@ def parse(bundle_path):
             raise BundleError("%s: MD5 mismatch (content was changed in transit)" % path)
         files.append((path, int(mode, 8), data))
         i = end + 1
-    return files
+    return files, links
+
+
+def check_path(path, i):
+    if path.startswith("/") or ".." in path.split("/"):
+        raise BundleError("line %d: unsafe path: %s" % (i + 1, path))
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Recreate files from a pack.py bundle.")
     parser.add_argument("bundle", help="bundle file made by pack.py")
     parser.add_argument("-d", "--dir", default=".", help="output directory (default: .)")
-    parser.add_argument("-force", "--force", action="store_true",
+    parser.add_argument("--force", action="store_true",
                         help="remove existing top-level directories from the bundle "
-                             "(e.g. flowgen/) before unpacking")
+                             "(flowgen/, common_files/) before unpacking")
     parser.add_argument("--list", action="store_true", help="only list the files")
     args = parser.parse_args(argv)
 
     try:
-        files = parse(args.bundle)
+        files, links = parse(args.bundle)
     except (OSError, BundleError) as exc:
         sys.exit("unpack: ERROR: %s" % exc)
 
     if args.list:
         for path, mode, _ in files:
             print("%03o %s" % (mode, path))
+        for path, target in links:
+            print("lnk %s -> %s" % (path, target))
         return 0
 
-    # Top-level entries (flowgen, tools, ...) this bundle owns in DIR.
-    tops = sorted(set(path.split("/")[0] for path, _, _ in files))
+    # Top-level directories (flowgen, common_files, ...) this bundle owns.
+    paths = [p for p, _, _ in files] + [p for p, _ in links]
+    tops = sorted(set(p.split("/")[0] for p in paths if "/" in p))
     existing = [t for t in tops if os.path.lexists(os.path.join(args.dir, t))]
     if existing and not args.force:
         sys.exit("unpack: ERROR: already exists in %s: %s\n"
-                 "unpack: use -force to remove and recreate them."
+                 "unpack: use --force to remove and recreate them."
                  % (os.path.abspath(args.dir), ", ".join(existing)))
     for top in existing:
         target = os.path.join(args.dir, top)
@@ -129,7 +150,18 @@ def main(argv=None):
             fh.write(data)
         os.chmod(dest, mode)
 
-    print("unpack: %d files -> %s" % (len(files), os.path.abspath(args.dir)))
+    for path, target in links:
+        dest = os.path.join(args.dir, *path.split("/"))
+        if os.path.lexists(dest):
+            if os.path.isdir(dest) and not os.path.islink(dest):
+                sys.exit("unpack: ERROR: cannot create link %s: a directory is in the way" % dest)
+            os.remove(dest)
+        if os.path.dirname(dest):
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+        os.symlink(target, dest)
+        print("unpack: link %s -> %s" % (path, target))
+
+    print("unpack: %d files, %d links -> %s" % (len(files), len(links), os.path.abspath(args.dir)))
     return 0
 
 
