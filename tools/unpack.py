@@ -2,11 +2,16 @@
 """unpack - recreate files from a bundle made by pack.py.
 
 Usage:
-    unpack.py BUNDLE [-d DIR] [--list]
+    unpack.py BUNDLE [-d DIR] [-force] [--list]
 
-Files are written under DIR (default: current directory), overwriting any
-existing files with the same path. Every file is checked against its MD5
-before anything is written; a damaged bundle writes nothing.
+Files are written under DIR (default: current directory). If a top-level
+directory (or file) from the bundle, e.g. flowgen/, already exists in DIR,
+unpack stops with an error and changes nothing. With -force (or --force)
+those existing top-level entries are removed first, then recreated from the
+bundle, so no stale files are left behind.
+
+Every file is checked against its MD5 before anything is written; a damaged
+bundle writes nothing.
 
 Python 3.6+, standard library only.
 """
@@ -17,6 +22,7 @@ import binascii
 import hashlib
 import os
 import re
+import shutil
 import sys
 
 HEADER_RE = re.compile(r"^#@@FILE (\S+) mode=([0-7]{3}) enc=(text|b64) lines=(\d+) "
@@ -84,6 +90,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Recreate files from a pack.py bundle.")
     parser.add_argument("bundle", help="bundle file made by pack.py")
     parser.add_argument("-d", "--dir", default=".", help="output directory (default: .)")
+    parser.add_argument("-force", "--force", action="store_true",
+                        help="remove existing top-level directories from the bundle "
+                             "(e.g. flowgen/) before unpacking")
     parser.add_argument("--list", action="store_true", help="only list the files")
     args = parser.parse_args(argv)
 
@@ -92,10 +101,27 @@ def main(argv=None):
     except (OSError, BundleError) as exc:
         sys.exit("unpack: ERROR: %s" % exc)
 
-    for path, mode, data in files:
-        if args.list:
+    if args.list:
+        for path, mode, _ in files:
             print("%03o %s" % (mode, path))
-            continue
+        return 0
+
+    # Top-level entries (flowgen, tools, ...) this bundle owns in DIR.
+    tops = sorted(set(path.split("/")[0] for path, _, _ in files))
+    existing = [t for t in tops if os.path.lexists(os.path.join(args.dir, t))]
+    if existing and not args.force:
+        sys.exit("unpack: ERROR: already exists in %s: %s\n"
+                 "unpack: use -force to remove and recreate them."
+                 % (os.path.abspath(args.dir), ", ".join(existing)))
+    for top in existing:
+        target = os.path.join(args.dir, top)
+        print("unpack: removing existing %s" % target)
+        if os.path.isdir(target) and not os.path.islink(target):
+            shutil.rmtree(target)
+        else:
+            os.remove(target)
+
+    for path, mode, data in files:
         dest = os.path.join(args.dir, *path.split("/"))
         if os.path.dirname(dest):
             os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -103,8 +129,7 @@ def main(argv=None):
             fh.write(data)
         os.chmod(dest, mode)
 
-    if not args.list:
-        print("unpack: %d files -> %s" % (len(files), os.path.abspath(args.dir)))
+    print("unpack: %d files -> %s" % (len(files), os.path.abspath(args.dir)))
     return 0
 
 
