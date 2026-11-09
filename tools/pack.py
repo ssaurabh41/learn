@@ -6,7 +6,8 @@ Usage:
 
 ROOT defaults to the git repo containing the current directory (or the
 current directory if not in git). In a git repo only tracked files are
-packed; otherwise every file under ROOT except .git/ is packed.
+packed; otherwise every file under ROOT except .git/ is packed. Paths
+under EXCLUDE_DIRS (docs/) are never packed.
 
 The bundle is pure ASCII, so it survives copy/paste, downloads and CRLF
 line endings. Pure-ASCII text files are stored as readable lines; any other
@@ -28,6 +29,8 @@ import hashlib
 import os
 import subprocess
 import sys
+
+EXCLUDE_DIRS = ("docs/",)   # top-level directories never packed
 
 
 def repo_root():
@@ -52,7 +55,8 @@ def list_files(root):
             for name in filenames:
                 rel = os.path.relpath(os.path.join(dirpath, name), root)
                 files.append(rel.replace(os.sep, "/"))
-    return sorted(f for f in files if os.path.isfile(os.path.join(root, f)))
+    return sorted(f for f in files
+                  if os.path.isfile(os.path.join(root, f)) and not f.startswith(EXCLUDE_DIRS))
 
 
 def main(argv=None):
