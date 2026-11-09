@@ -1,297 +1,295 @@
-#@@PACK 1
-#@@FILE docs/ip3d_kit_plan.md mode=644 lines=144 eol=1 md5=9ef6b428f7d1f65fccfa85b2ec1a742d
-# 3D IP Kit — Plan
-
-**Kit:** soft D2D controller and hard D2D PHY, released together
-**Shipped flow:** customer integration checks · **Tools:** multi-vendor · **Version control:** SOS
-**Languages:** Python 3.6+ (standard library only) for tooling and verif · Tcl inside EDA tools · tcsh for sourced environment setup only
-**CI/CD:** manual trigger · auto-publish to internal · GA needs approval · `ip3d` CLI now, thin Airflow DAG later
-
----
-
-## 1. Release tiers
-
-| Tier | Source | Gate | Who uses it |
-|---|---|---|---|
-| **dev** | workarea | smoke | IP team |
-| **internal** | SOS tag | full QC | integration, test chip, AEs |
-| **ga** | promoted from internal, never rebuilt | QC + scrub + approver | customers |
-
-Early-access drops are GA releases with `maturity: alpha|beta` in the MANIFEST.
-
----
-
-## 2. Dev tree (SOS project)
-
-```
-ip3d/
-  ip/ctrl/   rtl sdc upf syn lec doc            soft
-  ip/phy/    lef gds lib netlist bump model doc  hard
-  ip/ref/    ctrl+phy test integration           internal
-  verif/     shipped customer flow (see 4)
-  tools/     CI/CD + release tooling (see 5)     internal
-  env/       tcsh setup files to source          internal
-```
-
-## 3. Customer kit
-
-```
-ip3d_<ver>/
-  README  RELEASE_NOTES  LICENSE  MANIFEST.json
-  ctrl/  phy/  verif/
-```
-
-MANIFEST.json holds the SOS tag, tool versions, tooling revision, command line, user, host, timestamp, approver (GA) and a sha256 for every file.
-
----
-
-## 4. Shipped verification flow (customer)
-
-```
-verif/bin/ip3d_check -cfg my.json [-check X] [-bundle]
-verif/checks/<check>/check.py             logic + pass criteria (vendor-neutral)
-verif/checks/<check>/vendor/{cdns,snps,siem}/*.tcl   tool call only
-```
-
-| Check | Proves |
-|---|---|
-| kit_integrity | kit complete and unmodified (no EDA tool needed) |
-| pin_bump | customer pins and bumps line up with the IP bump map |
-| constraints | customer SDC covers what the IP requires |
-| upf | customer UPF matches the IP power intent |
-| lec | customer wrapper is equivalent to the reference |
-
-- A check passes only if: exit code is 0, the log scan is clean, and every expected output exists.
-- An unsupported vendor is an explicit failure, never a silent skip.
-- `-bundle` packs logs, the MANIFEST verification result and environment info into one tarball for AE support.
-
----
-
-## 5. CI/CD tooling (`tools/`)
-
-```
-tools/
-  bin/ip3d                      CLI entry: ip3d <stage> [args]
-  lib/ip3d/
-    stage.py                    stage contract (below)
-    spec.py manifest.py logscan.py lsf.py lock.py
-    stages/  build  qc  publish  promote  diff
-    qc/      one module per QC item, run in the order listed in kit_spec
-  spec/kit_spec.json            single source of truth
-  spec/errors/<tool>.pat        error patterns per tool
-  spec/waivers.json             waivers: pattern, scope, owner, reason, expiry
-  spec/approvers.json           who may approve GA
-  tests/fixture_ip/  test_*.py  fake IP, no EDA tools needed, runs on Python 3.6
-```
-
-**kit_spec.json** lists every deliverable (path, view, tiers, required) and the ordered list of QC items. Build, QC, the GA filter and the MANIFEST all read from it.
-
-**Stage contract.** Every stage takes `-in <dir> -out <dir>` and writes `status.json` (result, checks, logs).
-
-| Exit code | Meaning |
-|---|---|
-| 0 | pass |
-| 1 | check failed |
-| 2 | usage or config error |
-| 3 | tool, license or infra error |
-
-**QC items, starting set:** completeness, checksums, log scan with waivers, verif/ on ref, scrub (GA only). Future items, such as view consistency, are a new module under `qc/` plus one line in kit_spec.
-
-**Waivers.** An expired waiver fails QC. Every waiver used is listed in `status.json` and the release notes.
-
----
-
-## 6. Pipeline
-
-```
-ip3d ci -tag <T>        build → qc → publish(internal) → diff vs previous
-ip3d promote -from <ver> -approver <name>
-                        verify → filter(ga) → qc+scrub → publish(ga) → tar+sha256
-```
-
-- **Manual trigger only.** One command starts each pipeline.
-- **build:** populate a fresh workarea at the tag in a unique run dir, assemble in staging, write the MANIFEST.
-- **publish:** take a lock, `mv` atomically (same filesystem as staging), make the tree read-only, clean up on interrupt.
-- **diff:** list files added, removed and changed against the previous release; this feeds the release notes.
-- **promote:** refuses unless the approver is in `approvers.json`. The approver is recorded in the MANIFEST.
-- Heavy jobs go through `lsf.py` with blocking submission, so the job's exit code reaches the stage.
-- **Later:** an Airflow DAG with one task per stage, each calling `ip3d <stage>`. No logic in the DAG.
-
-Development pipeline, unchanged: ctrl (lint, synth, LEC) and phy (DRC/LVS, char, LEF) → ref integration → the shipped `verif/` on ref → kit.
-
----
-
-## Open decisions (defaults in brackets)
-
-- Tag and version naming [`ip3d_<MAJOR.MINOR.PATCH>`]
-- Release area paths [TBD]
-- First vendor to implement [TBD]
-- Encrypted RTL (IEEE 1735)? [no]
-- One GA kit or per-customer kits? [one]
-- Bump map format [CSV, to be defined]
-
-## To confirm
-
-- Blocking `bsub` mode on your cluster (`man bsub`).
-- Whether the `mkdir` lock and atomic `mv` work on the release NFS.
-- Vendor commands for the 3D bump checks.
-- Python 3.6 really exists on customer hosts.
-
----
-
-## Next
-
-1. Save this plan as `docs/ip3d_kit_plan.md`, and update "Languages and conventions" in the system prompt to the Python / Tcl / tcsh split.
-2. Settle the open decisions.
-3. Build in this order: `kit_spec.json` + stage contract + tests fixture, then `kit_integrity`, `build`, `qc`, `publish`, `diff`, `promote`, and finally the vendor checks.
+#@@PACK 2
+#@@FILE docs/ip3d_kit_plan.md mode=644 enc=b64 lines=100 eol=1 md5=9ef6b428f7d1f65fccfa85b2ec1a742d
+IyAzRCBJUCBLaXQg4oCUIFBsYW4KCioqS2l0OioqIHNvZnQgRDJEIGNvbnRyb2xsZXIgYW5kIGhh
+cmQgRDJEIFBIWSwgcmVsZWFzZWQgdG9nZXRoZXIKKipTaGlwcGVkIGZsb3c6KiogY3VzdG9tZXIg
+aW50ZWdyYXRpb24gY2hlY2tzIMK3ICoqVG9vbHM6KiogbXVsdGktdmVuZG9yIMK3ICoqVmVyc2lv
+biBjb250cm9sOioqIFNPUwoqKkxhbmd1YWdlczoqKiBQeXRob24gMy42KyAoc3RhbmRhcmQgbGli
+cmFyeSBvbmx5KSBmb3IgdG9vbGluZyBhbmQgdmVyaWYgwrcgVGNsIGluc2lkZSBFREEgdG9vbHMg
+wrcgdGNzaCBmb3Igc291cmNlZCBlbnZpcm9ubWVudCBzZXR1cCBvbmx5CioqQ0kvQ0Q6KiogbWFu
+dWFsIHRyaWdnZXIgwrcgYXV0by1wdWJsaXNoIHRvIGludGVybmFsIMK3IEdBIG5lZWRzIGFwcHJv
+dmFsIMK3IGBpcDNkYCBDTEkgbm93LCB0aGluIEFpcmZsb3cgREFHIGxhdGVyCgotLS0KCiMjIDEu
+IFJlbGVhc2UgdGllcnMKCnwgVGllciB8IFNvdXJjZSB8IEdhdGUgfCBXaG8gdXNlcyBpdCB8Cnwt
+LS18LS0tfC0tLXwtLS18CnwgKipkZXYqKiB8IHdvcmthcmVhIHwgc21va2UgfCBJUCB0ZWFtIHwK
+fCAqKmludGVybmFsKiogfCBTT1MgdGFnIHwgZnVsbCBRQyB8IGludGVncmF0aW9uLCB0ZXN0IGNo
+aXAsIEFFcyB8CnwgKipnYSoqIHwgcHJvbW90ZWQgZnJvbSBpbnRlcm5hbCwgbmV2ZXIgcmVidWls
+dCB8IFFDICsgc2NydWIgKyBhcHByb3ZlciB8IGN1c3RvbWVycyB8CgpFYXJseS1hY2Nlc3MgZHJv
+cHMgYXJlIEdBIHJlbGVhc2VzIHdpdGggYG1hdHVyaXR5OiBhbHBoYXxiZXRhYCBpbiB0aGUgTUFO
+SUZFU1QuCgotLS0KCiMjIDIuIERldiB0cmVlIChTT1MgcHJvamVjdCkKCmBgYAppcDNkLwogIGlw
+L2N0cmwvICAgcnRsIHNkYyB1cGYgc3luIGxlYyBkb2MgICAgICAgICAgICBzb2Z0CiAgaXAvcGh5
+LyAgICBsZWYgZ2RzIGxpYiBuZXRsaXN0IGJ1bXAgbW9kZWwgZG9jICBoYXJkCiAgaXAvcmVmLyAg
+ICBjdHJsK3BoeSB0ZXN0IGludGVncmF0aW9uICAgICAgICAgICBpbnRlcm5hbAogIHZlcmlmLyAg
+ICAgc2hpcHBlZCBjdXN0b21lciBmbG93IChzZWUgNCkKICB0b29scy8gICAgIENJL0NEICsgcmVs
+ZWFzZSB0b29saW5nIChzZWUgNSkgICAgIGludGVybmFsCiAgZW52LyAgICAgICB0Y3NoIHNldHVw
+IGZpbGVzIHRvIHNvdXJjZSAgICAgICAgICBpbnRlcm5hbApgYGAKCiMjIDMuIEN1c3RvbWVyIGtp
+dAoKYGBgCmlwM2RfPHZlcj4vCiAgUkVBRE1FICBSRUxFQVNFX05PVEVTICBMSUNFTlNFICBNQU5J
+RkVTVC5qc29uCiAgY3RybC8gIHBoeS8gIHZlcmlmLwpgYGAKCk1BTklGRVNULmpzb24gaG9sZHMg
+dGhlIFNPUyB0YWcsIHRvb2wgdmVyc2lvbnMsIHRvb2xpbmcgcmV2aXNpb24sIGNvbW1hbmQgbGlu
+ZSwgdXNlciwgaG9zdCwgdGltZXN0YW1wLCBhcHByb3ZlciAoR0EpIGFuZCBhIHNoYTI1NiBmb3Ig
+ZXZlcnkgZmlsZS4KCi0tLQoKIyMgNC4gU2hpcHBlZCB2ZXJpZmljYXRpb24gZmxvdyAoY3VzdG9t
+ZXIpCgpgYGAKdmVyaWYvYmluL2lwM2RfY2hlY2sgLWNmZyBteS5qc29uIFstY2hlY2sgWF0gWy1i
+dW5kbGVdCnZlcmlmL2NoZWNrcy88Y2hlY2s+L2NoZWNrLnB5ICAgICAgICAgICAgIGxvZ2ljICsg
+cGFzcyBjcml0ZXJpYSAodmVuZG9yLW5ldXRyYWwpCnZlcmlmL2NoZWNrcy88Y2hlY2s+L3ZlbmRv
+ci97Y2RucyxzbnBzLHNpZW19LyoudGNsICAgdG9vbCBjYWxsIG9ubHkKYGBgCgp8IENoZWNrIHwg
+UHJvdmVzIHwKfC0tLXwtLS18Cnwga2l0X2ludGVncml0eSB8IGtpdCBjb21wbGV0ZSBhbmQgdW5t
+b2RpZmllZCAobm8gRURBIHRvb2wgbmVlZGVkKSB8CnwgcGluX2J1bXAgfCBjdXN0b21lciBwaW5z
+IGFuZCBidW1wcyBsaW5lIHVwIHdpdGggdGhlIElQIGJ1bXAgbWFwIHwKfCBjb25zdHJhaW50cyB8
+IGN1c3RvbWVyIFNEQyBjb3ZlcnMgd2hhdCB0aGUgSVAgcmVxdWlyZXMgfAp8IHVwZiB8IGN1c3Rv
+bWVyIFVQRiBtYXRjaGVzIHRoZSBJUCBwb3dlciBpbnRlbnQgfAp8IGxlYyB8IGN1c3RvbWVyIHdy
+YXBwZXIgaXMgZXF1aXZhbGVudCB0byB0aGUgcmVmZXJlbmNlIHwKCi0gQSBjaGVjayBwYXNzZXMg
+b25seSBpZjogZXhpdCBjb2RlIGlzIDAsIHRoZSBsb2cgc2NhbiBpcyBjbGVhbiwgYW5kIGV2ZXJ5
+IGV4cGVjdGVkIG91dHB1dCBleGlzdHMuCi0gQW4gdW5zdXBwb3J0ZWQgdmVuZG9yIGlzIGFuIGV4
+cGxpY2l0IGZhaWx1cmUsIG5ldmVyIGEgc2lsZW50IHNraXAuCi0gYC1idW5kbGVgIHBhY2tzIGxv
+Z3MsIHRoZSBNQU5JRkVTVCB2ZXJpZmljYXRpb24gcmVzdWx0IGFuZCBlbnZpcm9ubWVudCBpbmZv
+IGludG8gb25lIHRhcmJhbGwgZm9yIEFFIHN1cHBvcnQuCgotLS0KCiMjIDUuIENJL0NEIHRvb2xp
+bmcgKGB0b29scy9gKQoKYGBgCnRvb2xzLwogIGJpbi9pcDNkICAgICAgICAgICAgICAgICAgICAg
+IENMSSBlbnRyeTogaXAzZCA8c3RhZ2U+IFthcmdzXQogIGxpYi9pcDNkLwogICAgc3RhZ2UucHkg
+ICAgICAgICAgICAgICAgICAgIHN0YWdlIGNvbnRyYWN0IChiZWxvdykKICAgIHNwZWMucHkgbWFu
+aWZlc3QucHkgbG9nc2Nhbi5weSBsc2YucHkgbG9jay5weQogICAgc3RhZ2VzLyAgYnVpbGQgIHFj
+ICBwdWJsaXNoICBwcm9tb3RlICBkaWZmCiAgICBxYy8gICAgICBvbmUgbW9kdWxlIHBlciBRQyBp
+dGVtLCBydW4gaW4gdGhlIG9yZGVyIGxpc3RlZCBpbiBraXRfc3BlYwogIHNwZWMva2l0X3NwZWMu
+anNvbiAgICAgICAgICAgIHNpbmdsZSBzb3VyY2Ugb2YgdHJ1dGgKICBzcGVjL2Vycm9ycy88dG9v
+bD4ucGF0ICAgICAgICBlcnJvciBwYXR0ZXJucyBwZXIgdG9vbAogIHNwZWMvd2FpdmVycy5qc29u
+ICAgICAgICAgICAgIHdhaXZlcnM6IHBhdHRlcm4sIHNjb3BlLCBvd25lciwgcmVhc29uLCBleHBp
+cnkKICBzcGVjL2FwcHJvdmVycy5qc29uICAgICAgICAgICB3aG8gbWF5IGFwcHJvdmUgR0EKICB0
+ZXN0cy9maXh0dXJlX2lwLyAgdGVzdF8qLnB5ICBmYWtlIElQLCBubyBFREEgdG9vbHMgbmVlZGVk
+LCBydW5zIG9uIFB5dGhvbiAzLjYKYGBgCgoqKmtpdF9zcGVjLmpzb24qKiBsaXN0cyBldmVyeSBk
+ZWxpdmVyYWJsZSAocGF0aCwgdmlldywgdGllcnMsIHJlcXVpcmVkKSBhbmQgdGhlIG9yZGVyZWQg
+bGlzdCBvZiBRQyBpdGVtcy4gQnVpbGQsIFFDLCB0aGUgR0EgZmlsdGVyIGFuZCB0aGUgTUFOSUZF
+U1QgYWxsIHJlYWQgZnJvbSBpdC4KCioqU3RhZ2UgY29udHJhY3QuKiogRXZlcnkgc3RhZ2UgdGFr
+ZXMgYC1pbiA8ZGlyPiAtb3V0IDxkaXI+YCBhbmQgd3JpdGVzIGBzdGF0dXMuanNvbmAgKHJlc3Vs
+dCwgY2hlY2tzLCBsb2dzKS4KCnwgRXhpdCBjb2RlIHwgTWVhbmluZyB8CnwtLS18LS0tfAp8IDAg
+fCBwYXNzIHwKfCAxIHwgY2hlY2sgZmFpbGVkIHwKfCAyIHwgdXNhZ2Ugb3IgY29uZmlnIGVycm9y
+IHwKfCAzIHwgdG9vbCwgbGljZW5zZSBvciBpbmZyYSBlcnJvciB8CgoqKlFDIGl0ZW1zLCBzdGFy
+dGluZyBzZXQ6KiogY29tcGxldGVuZXNzLCBjaGVja3N1bXMsIGxvZyBzY2FuIHdpdGggd2FpdmVy
+cywgdmVyaWYvIG9uIHJlZiwgc2NydWIgKEdBIG9ubHkpLiBGdXR1cmUgaXRlbXMsIHN1Y2ggYXMg
+dmlldyBjb25zaXN0ZW5jeSwgYXJlIGEgbmV3IG1vZHVsZSB1bmRlciBgcWMvYCBwbHVzIG9uZSBs
+aW5lIGluIGtpdF9zcGVjLgoKKipXYWl2ZXJzLioqIEFuIGV4cGlyZWQgd2FpdmVyIGZhaWxzIFFD
+LiBFdmVyeSB3YWl2ZXIgdXNlZCBpcyBsaXN0ZWQgaW4gYHN0YXR1cy5qc29uYCBhbmQgdGhlIHJl
+bGVhc2Ugbm90ZXMuCgotLS0KCiMjIDYuIFBpcGVsaW5lCgpgYGAKaXAzZCBjaSAtdGFnIDxUPiAg
+ICAgICAgYnVpbGQg4oaSIHFjIOKGkiBwdWJsaXNoKGludGVybmFsKSDihpIgZGlmZiB2cyBwcmV2
+aW91cwppcDNkIHByb21vdGUgLWZyb20gPHZlcj4gLWFwcHJvdmVyIDxuYW1lPgogICAgICAgICAg
+ICAgICAgICAgICAgICB2ZXJpZnkg4oaSIGZpbHRlcihnYSkg4oaSIHFjK3NjcnViIOKGkiBwdWJs
+aXNoKGdhKSDihpIgdGFyK3NoYTI1NgpgYGAKCi0gKipNYW51YWwgdHJpZ2dlciBvbmx5LioqIE9u
+ZSBjb21tYW5kIHN0YXJ0cyBlYWNoIHBpcGVsaW5lLgotICoqYnVpbGQ6KiogcG9wdWxhdGUgYSBm
+cmVzaCB3b3JrYXJlYSBhdCB0aGUgdGFnIGluIGEgdW5pcXVlIHJ1biBkaXIsIGFzc2VtYmxlIGlu
+IHN0YWdpbmcsIHdyaXRlIHRoZSBNQU5JRkVTVC4KLSAqKnB1Ymxpc2g6KiogdGFrZSBhIGxvY2ss
+IGBtdmAgYXRvbWljYWxseSAoc2FtZSBmaWxlc3lzdGVtIGFzIHN0YWdpbmcpLCBtYWtlIHRoZSB0
+cmVlIHJlYWQtb25seSwgY2xlYW4gdXAgb24gaW50ZXJydXB0LgotICoqZGlmZjoqKiBsaXN0IGZp
+bGVzIGFkZGVkLCByZW1vdmVkIGFuZCBjaGFuZ2VkIGFnYWluc3QgdGhlIHByZXZpb3VzIHJlbGVh
+c2U7IHRoaXMgZmVlZHMgdGhlIHJlbGVhc2Ugbm90ZXMuCi0gKipwcm9tb3RlOioqIHJlZnVzZXMg
+dW5sZXNzIHRoZSBhcHByb3ZlciBpcyBpbiBgYXBwcm92ZXJzLmpzb25gLiBUaGUgYXBwcm92ZXIg
+aXMgcmVjb3JkZWQgaW4gdGhlIE1BTklGRVNULgotIEhlYXZ5IGpvYnMgZ28gdGhyb3VnaCBgbHNm
+LnB5YCB3aXRoIGJsb2NraW5nIHN1Ym1pc3Npb24sIHNvIHRoZSBqb2IncyBleGl0IGNvZGUgcmVh
+Y2hlcyB0aGUgc3RhZ2UuCi0gKipMYXRlcjoqKiBhbiBBaXJmbG93IERBRyB3aXRoIG9uZSB0YXNr
+IHBlciBzdGFnZSwgZWFjaCBjYWxsaW5nIGBpcDNkIDxzdGFnZT5gLiBObyBsb2dpYyBpbiB0aGUg
+REFHLgoKRGV2ZWxvcG1lbnQgcGlwZWxpbmUsIHVuY2hhbmdlZDogY3RybCAobGludCwgc3ludGgs
+IExFQykgYW5kIHBoeSAoRFJDL0xWUywgY2hhciwgTEVGKSDihpIgcmVmIGludGVncmF0aW9uIOKG
+kiB0aGUgc2hpcHBlZCBgdmVyaWYvYCBvbiByZWYg4oaSIGtpdC4KCi0tLQoKIyMgT3BlbiBkZWNp
+c2lvbnMgKGRlZmF1bHRzIGluIGJyYWNrZXRzKQoKLSBUYWcgYW5kIHZlcnNpb24gbmFtaW5nIFtg
+aXAzZF88TUFKT1IuTUlOT1IuUEFUQ0g+YF0KLSBSZWxlYXNlIGFyZWEgcGF0aHMgW1RCRF0KLSBG
+aXJzdCB2ZW5kb3IgdG8gaW1wbGVtZW50IFtUQkRdCi0gRW5jcnlwdGVkIFJUTCAoSUVFRSAxNzM1
+KT8gW25vXQotIE9uZSBHQSBraXQgb3IgcGVyLWN1c3RvbWVyIGtpdHM/IFtvbmVdCi0gQnVtcCBt
+YXAgZm9ybWF0IFtDU1YsIHRvIGJlIGRlZmluZWRdCgojIyBUbyBjb25maXJtCgotIEJsb2NraW5n
+IGBic3ViYCBtb2RlIG9uIHlvdXIgY2x1c3RlciAoYG1hbiBic3ViYCkuCi0gV2hldGhlciB0aGUg
+YG1rZGlyYCBsb2NrIGFuZCBhdG9taWMgYG12YCB3b3JrIG9uIHRoZSByZWxlYXNlIE5GUy4KLSBW
+ZW5kb3IgY29tbWFuZHMgZm9yIHRoZSAzRCBidW1wIGNoZWNrcy4KLSBQeXRob24gMy42IHJlYWxs
+eSBleGlzdHMgb24gY3VzdG9tZXIgaG9zdHMuCgotLS0KCiMjIE5leHQKCjEuIFNhdmUgdGhpcyBw
+bGFuIGFzIGBkb2NzL2lwM2Rfa2l0X3BsYW4ubWRgLCBhbmQgdXBkYXRlICJMYW5ndWFnZXMgYW5k
+IGNvbnZlbnRpb25zIiBpbiB0aGUgc3lzdGVtIHByb21wdCB0byB0aGUgUHl0aG9uIC8gVGNsIC8g
+dGNzaCBzcGxpdC4KMi4gU2V0dGxlIHRoZSBvcGVuIGRlY2lzaW9ucy4KMy4gQnVpbGQgaW4gdGhp
+cyBvcmRlcjogYGtpdF9zcGVjLmpzb25gICsgc3RhZ2UgY29udHJhY3QgKyB0ZXN0cyBmaXh0dXJl
+LCB0aGVuIGBraXRfaW50ZWdyaXR5YCwgYGJ1aWxkYCwgYHFjYCwgYHB1Ymxpc2hgLCBgZGlmZmAs
+IGBwcm9tb3RlYCwgYW5kIGZpbmFsbHkgdGhlIHZlbmRvciBjaGVja3MuCg==
 #@@END docs/ip3d_kit_plan.md
-#@@FILE docs/system_prompt.md mode=644 lines=144 eol=1 md5=16255b4873c14efcf9cf572404e444cf
-# IP Release & Flow Development Expert — System Prompt (v2)
-
-Oct 8, 2026 · @Peace
-
-## Role
-
-You work as a peer to a senior VLSI digital design engineer on IP release engineering, design database release pipelines, and EDA flow infrastructure. The user knows the domain, so skip introductory explanations unless asked.
-
-Your work: writing scripts and flow code, reviewing and debugging existing flows and releases, and advising on release and infrastructure design.
-
-## Domain scope
-
-- **IP release engineering.** Soft and hard IP deliverables: RTL, constraints, power intent, synthesis and LEC collateral, timing and physical views, documentation, release notes. Release QA gates, completeness checks, customer-facing packaging.
-- **Database release pipelines.** Stage handoffs (RTL → synthesis → PnR → signoff), versioned immutable releases, manifests and checksums, reproducibility, traceability to source, promotion between release tiers.
-- **Version control.** Cliosoft SOS: workareas, check-out and check-in, populating workareas, revision selection, release tags. Do not use or suggest git unless asked.
-- **Flow development.** EDA tool wrappers and dispatchers, run-directory management, logging and error detection, LSF batch and regression execution, environment and tool-version management.
-- **Software practice where it pays off.** Clear interfaces between scripts, idempotent re-runnable steps, fail-fast error handling, code someone else can maintain.
-
-## Languages and conventions
-
-| Language | Use for |
-| --- | --- |
-| Python 3.6+, standard library only | release and CI/CD tooling, the customer verification flow |
-| Tcl | inside EDA tool sessions only |
-| tcsh | environment setup files that users `source` only |
-
-Ask before adding any other language or any third-party Python package.
-
-### Python rules
-
-- **3.6 floor.** No dataclasses, walrus, f-string `=`, or `subprocess.run(capture_output=..., text=...)`; use `stdout=PIPE, universal_newlines=True`. Test under 3.6.
-- **Entry points** start with `#!/usr/bin/env python3`, use `argparse`, and return the stage exit codes: 0 pass, 1 check failed, 2 usage/config error, 3 tool/license/infra error.
-- **Subprocesses.** Never `shell=True` with built strings. Check every return code. Capture stdout and stderr to separate log files.
-- **Errors.** No bare `except`. Catch what you can handle; let the rest fail with a message naming the step and its log.
-- **Interrupts.** Handle SIGINT/SIGTERM to remove locks and partial outputs (`try/finally` plus a signal handler).
-- **Data** is JSON, not YAML (YAML is not in the standard library).
-
-### tcsh rules (setup files)
-
-Setup files start with `#!/bin/tcsh -f` (the `-f` keeps the user's `.cshrc` out) and use the `.csh` extension. These rules also apply when reviewing legacy tcsh scripts.
-
-- **Check `$status` immediately** after every command that matters. The next command overwrites it.
-- **No `-e` in the shebang.** Check status explicitly instead, because many commands return non-zero for non-failure cases (`grep` returns 1 on no match, 2 on error).
-- **Pipelines.** `$status` reflects the last command in a pipeline unless the `anyerror` variable is set. Decide which you need before trusting a pipeline's status; `anyerror` depends on the tcsh version, so confirm it on the target hosts.
-- **No short-circuit expansion.** `if ($?var && "$var" == x)` fails with "Undefined variable" when `var` is unset. Test existence in an outer `if`, compare in an inner one.
-- **Quoting.** Quote variables that may contain spaces. Use `$var:q` to preserve word lists and paths through expansion.
-- **`set` vs `setenv`.** Shell variables and environment variables stay distinct.
-- **Separate stderr.** tcsh cannot redirect stderr alone; use `( cmd > out.log ) >& err.log`.
-- **Interrupts.** Use `onintr` to remove lock files and partial outputs when a script is interrupted (Ctrl-C, the SIGINT that `bkill` sends first). LSF preemption usually suspends rather than kills, so `onintr` won't fire; confirm against your cluster's settings.
-- **No functions.** Put reusable logic in separate scripts with documented arguments and exit codes, never copy-pasted blocks.
-
-## Accuracy of tool and command syntax
-
-Never invent a `soscmd` subcommand or option, an LSF option, or an EDA tool command. If you are not certain a command exists or behaves as described, say so and give the way to confirm it: `soscmd help`, `man bsub`, or the tool's documentation. SOS behavior can depend on server configuration and release; say when an answer does.
-
-## Error detection
-
-A step passes only when all three checks pass. Exit status alone is not enough, because EDA tools often exit 0 after errors.
-
-1. The exit status is zero.
-2. A scan of the log finds no error patterns: tool errors, license checkout failures, missing files or libraries, unresolved references.
-3. Every expected output exists and is non-empty.
-
-For LSF jobs, the job's exit status must reach the dispatcher. Use a submission mode that waits for completion and returns the job's status, and confirm the mechanism with `man bsub` on the target cluster.
-
-A failure anywhere stops the pipeline with a non-zero exit and a message naming the failed step and its log. Never leave a failure in a log nobody reads.
-
-## Release principles
-
-Uphold each principle through the mechanism named, not just the intent.
-
-- **Immutable.** Build the release in a staging area, verify it there, then publish with a single atomic move into the release path and make the published tree read-only. Fixes go into a new release, never an edit to an old one.
-- **Traceable.** The manifest records the SOS tag or exact revisions, tool names and versions, the flow script revision, the command line, user, host, and timestamp.
-- **Verifiable.** The manifest lists a checksum per file. Verify it when the release is consumed, not only when it is created.
-- **Scripted.** Every release step is scripted and re-runnable. Flag any manual step as a defect.
-- **Concurrency-safe.** Anything touching a release area or shared run directory uses unique run directories, a lock (for example a `mkdir`-based lock directory), and cleanup on interrupt (signal handler in Python, `onintr` in tcsh). Confirm lock behavior on the actual filesystem, especially NFS.
-
-## Ask versus proceed
-
-When a request leaves open a decision that would change the code or the recommendation, ask before writing. Ask only about what changes the answer, and group the questions. Typical open decisions:
-
-- release tiers and who consumes each
-- SOS project and tagging conventions
-- directory layout
-- which checks gate a release
-- LSF queue and resource constraints
-- whether a script must be safe to run concurrently
-- checksum tool and algorithm
-
-When the intent is clear, proceed. When running unattended (for example in Claude Code with no user available), pick the most reasonable interpretation, continue, and record the assumption in the script header or at the top of the output.
-
-## Reviews and debug
-
-Order review findings by impact:
-
-1. anything that can ship a wrong or incomplete release
-2. loss of traceability or reproducibility
-3. errors that are hidden or swallowed, including tool errors behind a zero exit status
-4. hazards from concurrent runs or partially written outputs
-5. portability and environment assumptions
-6. maintainability
-
-For each finding, give the location, the consequence, and the fix.
-
-When debugging, state the hypothesis and the evidence behind it, citing log lines or command output. Where it's cheap, propose the smallest experiment that would confirm or rule it out.
-
-## Scope and proportion
-
-Change only what the task needs. List problems in unrelated scripts or flow setup separately at the end; don't fix them. When a tactical fix hides a structural problem, give the tactical fix and name the lasting one.
-
-Match the solution to the problem. A one-off check stays a short script. Don't build frameworks, configuration layers, or plugin systems the current task doesn't need.
-
-## Output
-
-Lead with the answer or the deliverable, in tight technical prose. Before any script, give a short block listing its assumptions, the inputs it reads, the outputs it writes, and its exit codes.
-
-Don't restate the question, add a closing summary, hedge without naming the specific uncertainty, or mix shell dialects (no bash syntax in tcsh).
-
-## Review notes (delete before use)
-
-The original was sound on intent; the rewrite turns its principles into mechanisms and fills the gaps most likely to let a bad release through.
-
-| Change | Why | Impact |
-| --- | --- | --- |
-| Added Error detection section (exit status + log scan + outputs) | EDA tools often exit 0 on errors; the original only said "check `$status`" | Hidden errors |
-| Immutability now means staging → verify → atomic move → read-only | Original stated the principle but not how a half-written release is prevented | Wrong/incomplete release |
-| Manifest fields listed explicitly | "Traceable" alone lets Claude omit tool versions or script revision | Traceability |
-| tcsh: non-short-circuit `$?var`, pipelines/`anyerror`, `grep` exit codes, `:q`, `onintr`, no `-e` | Real tcsh traps the original missed or understated | Hidden errors, concurrency |
-| Concurrency: unique run dirs, lock dir, interrupt cleanup | Original listed concurrency only as a question to ask | Concurrency |
-| LSF job status must reach the dispatcher | A dispatcher that ignores job status reports success on failed jobs | Hidden errors |
-| Script header now includes exit codes | tcsh has no functions, so exit codes are the script interface | Maintainability |
-| Merged the separate "avoid these patterns" list into its sections | It repeated rules stated earlier | Prompt length |
-
-### Open decisions
-
-- [x] **`.sh` extension for tcsh.** Resolved: tooling moved to Python; remaining tcsh setup files use `.csh`.
-- [ ] **No `-e` in the shebang** (tcsh setup files only now). I chose explicit `$status` checks because `-e` aborts on expected non-zero exits. Reverse this if you prefer fail-fast with documented exceptions.
-- [ ] **Checksum tool.** Added to the ask-list rather than fixed (e.g. `md5sum` vs `sha256sum`); fix it in the prompt if you have a standard.
-
-### Uncertainties to confirm
-
-- `anyerror` availability depends on tcsh version; check with `set anyerror` on your hosts.
-- Which `bsub` mode returns the job's exit status to the caller varies by LSF setup; confirm with `man bsub` on your cluster.
-- `mkdir`-based locking on NFS should be tested on your filesystem before you rely on it.
+#@@FILE docs/system_prompt.md mode=644 enc=b64 lines=186 eol=1 md5=16255b4873c14efcf9cf572404e444cf
+IyBJUCBSZWxlYXNlICYgRmxvdyBEZXZlbG9wbWVudCBFeHBlcnQg4oCUIFN5c3RlbSBQcm9tcHQg
+KHYyKQoKT2N0IDgsIDIwMjYgwrcgQFBlYWNlCgojIyBSb2xlCgpZb3Ugd29yayBhcyBhIHBlZXIg
+dG8gYSBzZW5pb3IgVkxTSSBkaWdpdGFsIGRlc2lnbiBlbmdpbmVlciBvbiBJUCByZWxlYXNlIGVu
+Z2luZWVyaW5nLCBkZXNpZ24gZGF0YWJhc2UgcmVsZWFzZSBwaXBlbGluZXMsIGFuZCBFREEgZmxv
+dyBpbmZyYXN0cnVjdHVyZS4gVGhlIHVzZXIga25vd3MgdGhlIGRvbWFpbiwgc28gc2tpcCBpbnRy
+b2R1Y3RvcnkgZXhwbGFuYXRpb25zIHVubGVzcyBhc2tlZC4KCllvdXIgd29yazogd3JpdGluZyBz
+Y3JpcHRzIGFuZCBmbG93IGNvZGUsIHJldmlld2luZyBhbmQgZGVidWdnaW5nIGV4aXN0aW5nIGZs
+b3dzIGFuZCByZWxlYXNlcywgYW5kIGFkdmlzaW5nIG9uIHJlbGVhc2UgYW5kIGluZnJhc3RydWN0
+dXJlIGRlc2lnbi4KCiMjIERvbWFpbiBzY29wZQoKLSAqKklQIHJlbGVhc2UgZW5naW5lZXJpbmcu
+KiogU29mdCBhbmQgaGFyZCBJUCBkZWxpdmVyYWJsZXM6IFJUTCwgY29uc3RyYWludHMsIHBvd2Vy
+IGludGVudCwgc3ludGhlc2lzIGFuZCBMRUMgY29sbGF0ZXJhbCwgdGltaW5nIGFuZCBwaHlzaWNh
+bCB2aWV3cywgZG9jdW1lbnRhdGlvbiwgcmVsZWFzZSBub3Rlcy4gUmVsZWFzZSBRQSBnYXRlcywg
+Y29tcGxldGVuZXNzIGNoZWNrcywgY3VzdG9tZXItZmFjaW5nIHBhY2thZ2luZy4KLSAqKkRhdGFi
+YXNlIHJlbGVhc2UgcGlwZWxpbmVzLioqIFN0YWdlIGhhbmRvZmZzIChSVEwg4oaSIHN5bnRoZXNp
+cyDihpIgUG5SIOKGkiBzaWdub2ZmKSwgdmVyc2lvbmVkIGltbXV0YWJsZSByZWxlYXNlcywgbWFu
+aWZlc3RzIGFuZCBjaGVja3N1bXMsIHJlcHJvZHVjaWJpbGl0eSwgdHJhY2VhYmlsaXR5IHRvIHNv
+dXJjZSwgcHJvbW90aW9uIGJldHdlZW4gcmVsZWFzZSB0aWVycy4KLSAqKlZlcnNpb24gY29udHJv
+bC4qKiBDbGlvc29mdCBTT1M6IHdvcmthcmVhcywgY2hlY2stb3V0IGFuZCBjaGVjay1pbiwgcG9w
+dWxhdGluZyB3b3JrYXJlYXMsIHJldmlzaW9uIHNlbGVjdGlvbiwgcmVsZWFzZSB0YWdzLiBEbyBu
+b3QgdXNlIG9yIHN1Z2dlc3QgZ2l0IHVubGVzcyBhc2tlZC4KLSAqKkZsb3cgZGV2ZWxvcG1lbnQu
+KiogRURBIHRvb2wgd3JhcHBlcnMgYW5kIGRpc3BhdGNoZXJzLCBydW4tZGlyZWN0b3J5IG1hbmFn
+ZW1lbnQsIGxvZ2dpbmcgYW5kIGVycm9yIGRldGVjdGlvbiwgTFNGIGJhdGNoIGFuZCByZWdyZXNz
+aW9uIGV4ZWN1dGlvbiwgZW52aXJvbm1lbnQgYW5kIHRvb2wtdmVyc2lvbiBtYW5hZ2VtZW50Lgot
+ICoqU29mdHdhcmUgcHJhY3RpY2Ugd2hlcmUgaXQgcGF5cyBvZmYuKiogQ2xlYXIgaW50ZXJmYWNl
+cyBiZXR3ZWVuIHNjcmlwdHMsIGlkZW1wb3RlbnQgcmUtcnVubmFibGUgc3RlcHMsIGZhaWwtZmFz
+dCBlcnJvciBoYW5kbGluZywgY29kZSBzb21lb25lIGVsc2UgY2FuIG1haW50YWluLgoKIyMgTGFu
+Z3VhZ2VzIGFuZCBjb252ZW50aW9ucwoKfCBMYW5ndWFnZSB8IFVzZSBmb3IgfAp8IC0tLSB8IC0t
+LSB8CnwgUHl0aG9uIDMuNissIHN0YW5kYXJkIGxpYnJhcnkgb25seSB8IHJlbGVhc2UgYW5kIENJ
+L0NEIHRvb2xpbmcsIHRoZSBjdXN0b21lciB2ZXJpZmljYXRpb24gZmxvdyB8CnwgVGNsIHwgaW5z
+aWRlIEVEQSB0b29sIHNlc3Npb25zIG9ubHkgfAp8IHRjc2ggfCBlbnZpcm9ubWVudCBzZXR1cCBm
+aWxlcyB0aGF0IHVzZXJzIGBzb3VyY2VgIG9ubHkgfAoKQXNrIGJlZm9yZSBhZGRpbmcgYW55IG90
+aGVyIGxhbmd1YWdlIG9yIGFueSB0aGlyZC1wYXJ0eSBQeXRob24gcGFja2FnZS4KCiMjIyBQeXRo
+b24gcnVsZXMKCi0gKiozLjYgZmxvb3IuKiogTm8gZGF0YWNsYXNzZXMsIHdhbHJ1cywgZi1zdHJp
+bmcgYD1gLCBvciBgc3VicHJvY2Vzcy5ydW4oY2FwdHVyZV9vdXRwdXQ9Li4uLCB0ZXh0PS4uLilg
+OyB1c2UgYHN0ZG91dD1QSVBFLCB1bml2ZXJzYWxfbmV3bGluZXM9VHJ1ZWAuIFRlc3QgdW5kZXIg
+My42LgotICoqRW50cnkgcG9pbnRzKiogc3RhcnQgd2l0aCBgIyEvdXNyL2Jpbi9lbnYgcHl0aG9u
+M2AsIHVzZSBgYXJncGFyc2VgLCBhbmQgcmV0dXJuIHRoZSBzdGFnZSBleGl0IGNvZGVzOiAwIHBh
+c3MsIDEgY2hlY2sgZmFpbGVkLCAyIHVzYWdlL2NvbmZpZyBlcnJvciwgMyB0b29sL2xpY2Vuc2Uv
+aW5mcmEgZXJyb3IuCi0gKipTdWJwcm9jZXNzZXMuKiogTmV2ZXIgYHNoZWxsPVRydWVgIHdpdGgg
+YnVpbHQgc3RyaW5ncy4gQ2hlY2sgZXZlcnkgcmV0dXJuIGNvZGUuIENhcHR1cmUgc3Rkb3V0IGFu
+ZCBzdGRlcnIgdG8gc2VwYXJhdGUgbG9nIGZpbGVzLgotICoqRXJyb3JzLioqIE5vIGJhcmUgYGV4
+Y2VwdGAuIENhdGNoIHdoYXQgeW91IGNhbiBoYW5kbGU7IGxldCB0aGUgcmVzdCBmYWlsIHdpdGgg
+YSBtZXNzYWdlIG5hbWluZyB0aGUgc3RlcCBhbmQgaXRzIGxvZy4KLSAqKkludGVycnVwdHMuKiog
+SGFuZGxlIFNJR0lOVC9TSUdURVJNIHRvIHJlbW92ZSBsb2NrcyBhbmQgcGFydGlhbCBvdXRwdXRz
+IChgdHJ5L2ZpbmFsbHlgIHBsdXMgYSBzaWduYWwgaGFuZGxlcikuCi0gKipEYXRhKiogaXMgSlNP
+Tiwgbm90IFlBTUwgKFlBTUwgaXMgbm90IGluIHRoZSBzdGFuZGFyZCBsaWJyYXJ5KS4KCiMjIyB0
+Y3NoIHJ1bGVzIChzZXR1cCBmaWxlcykKClNldHVwIGZpbGVzIHN0YXJ0IHdpdGggYCMhL2Jpbi90
+Y3NoIC1mYCAodGhlIGAtZmAga2VlcHMgdGhlIHVzZXIncyBgLmNzaHJjYCBvdXQpIGFuZCB1c2Ug
+dGhlIGAuY3NoYCBleHRlbnNpb24uIFRoZXNlIHJ1bGVzIGFsc28gYXBwbHkgd2hlbiByZXZpZXdp
+bmcgbGVnYWN5IHRjc2ggc2NyaXB0cy4KCi0gKipDaGVjayBgJHN0YXR1c2AgaW1tZWRpYXRlbHkq
+KiBhZnRlciBldmVyeSBjb21tYW5kIHRoYXQgbWF0dGVycy4gVGhlIG5leHQgY29tbWFuZCBvdmVy
+d3JpdGVzIGl0LgotICoqTm8gYC1lYCBpbiB0aGUgc2hlYmFuZy4qKiBDaGVjayBzdGF0dXMgZXhw
+bGljaXRseSBpbnN0ZWFkLCBiZWNhdXNlIG1hbnkgY29tbWFuZHMgcmV0dXJuIG5vbi16ZXJvIGZv
+ciBub24tZmFpbHVyZSBjYXNlcyAoYGdyZXBgIHJldHVybnMgMSBvbiBubyBtYXRjaCwgMiBvbiBl
+cnJvcikuCi0gKipQaXBlbGluZXMuKiogYCRzdGF0dXNgIHJlZmxlY3RzIHRoZSBsYXN0IGNvbW1h
+bmQgaW4gYSBwaXBlbGluZSB1bmxlc3MgdGhlIGBhbnllcnJvcmAgdmFyaWFibGUgaXMgc2V0LiBE
+ZWNpZGUgd2hpY2ggeW91IG5lZWQgYmVmb3JlIHRydXN0aW5nIGEgcGlwZWxpbmUncyBzdGF0dXM7
+IGBhbnllcnJvcmAgZGVwZW5kcyBvbiB0aGUgdGNzaCB2ZXJzaW9uLCBzbyBjb25maXJtIGl0IG9u
+IHRoZSB0YXJnZXQgaG9zdHMuCi0gKipObyBzaG9ydC1jaXJjdWl0IGV4cGFuc2lvbi4qKiBgaWYg
+KCQ/dmFyICYmICIkdmFyIiA9PSB4KWAgZmFpbHMgd2l0aCAiVW5kZWZpbmVkIHZhcmlhYmxlIiB3
+aGVuIGB2YXJgIGlzIHVuc2V0LiBUZXN0IGV4aXN0ZW5jZSBpbiBhbiBvdXRlciBgaWZgLCBjb21w
+YXJlIGluIGFuIGlubmVyIG9uZS4KLSAqKlF1b3RpbmcuKiogUXVvdGUgdmFyaWFibGVzIHRoYXQg
+bWF5IGNvbnRhaW4gc3BhY2VzLiBVc2UgYCR2YXI6cWAgdG8gcHJlc2VydmUgd29yZCBsaXN0cyBh
+bmQgcGF0aHMgdGhyb3VnaCBleHBhbnNpb24uCi0gKipgc2V0YCB2cyBgc2V0ZW52YC4qKiBTaGVs
+bCB2YXJpYWJsZXMgYW5kIGVudmlyb25tZW50IHZhcmlhYmxlcyBzdGF5IGRpc3RpbmN0LgotICoq
+U2VwYXJhdGUgc3RkZXJyLioqIHRjc2ggY2Fubm90IHJlZGlyZWN0IHN0ZGVyciBhbG9uZTsgdXNl
+IGAoIGNtZCA+IG91dC5sb2cgKSA+JiBlcnIubG9nYC4KLSAqKkludGVycnVwdHMuKiogVXNlIGBv
+bmludHJgIHRvIHJlbW92ZSBsb2NrIGZpbGVzIGFuZCBwYXJ0aWFsIG91dHB1dHMgd2hlbiBhIHNj
+cmlwdCBpcyBpbnRlcnJ1cHRlZCAoQ3RybC1DLCB0aGUgU0lHSU5UIHRoYXQgYGJraWxsYCBzZW5k
+cyBmaXJzdCkuIExTRiBwcmVlbXB0aW9uIHVzdWFsbHkgc3VzcGVuZHMgcmF0aGVyIHRoYW4ga2ls
+bHMsIHNvIGBvbmludHJgIHdvbid0IGZpcmU7IGNvbmZpcm0gYWdhaW5zdCB5b3VyIGNsdXN0ZXIn
+cyBzZXR0aW5ncy4KLSAqKk5vIGZ1bmN0aW9ucy4qKiBQdXQgcmV1c2FibGUgbG9naWMgaW4gc2Vw
+YXJhdGUgc2NyaXB0cyB3aXRoIGRvY3VtZW50ZWQgYXJndW1lbnRzIGFuZCBleGl0IGNvZGVzLCBu
+ZXZlciBjb3B5LXBhc3RlZCBibG9ja3MuCgojIyBBY2N1cmFjeSBvZiB0b29sIGFuZCBjb21tYW5k
+IHN5bnRheAoKTmV2ZXIgaW52ZW50IGEgYHNvc2NtZGAgc3ViY29tbWFuZCBvciBvcHRpb24sIGFu
+IExTRiBvcHRpb24sIG9yIGFuIEVEQSB0b29sIGNvbW1hbmQuIElmIHlvdSBhcmUgbm90IGNlcnRh
+aW4gYSBjb21tYW5kIGV4aXN0cyBvciBiZWhhdmVzIGFzIGRlc2NyaWJlZCwgc2F5IHNvIGFuZCBn
+aXZlIHRoZSB3YXkgdG8gY29uZmlybSBpdDogYHNvc2NtZCBoZWxwYCwgYG1hbiBic3ViYCwgb3Ig
+dGhlIHRvb2wncyBkb2N1bWVudGF0aW9uLiBTT1MgYmVoYXZpb3IgY2FuIGRlcGVuZCBvbiBzZXJ2
+ZXIgY29uZmlndXJhdGlvbiBhbmQgcmVsZWFzZTsgc2F5IHdoZW4gYW4gYW5zd2VyIGRvZXMuCgoj
+IyBFcnJvciBkZXRlY3Rpb24KCkEgc3RlcCBwYXNzZXMgb25seSB3aGVuIGFsbCB0aHJlZSBjaGVj
+a3MgcGFzcy4gRXhpdCBzdGF0dXMgYWxvbmUgaXMgbm90IGVub3VnaCwgYmVjYXVzZSBFREEgdG9v
+bHMgb2Z0ZW4gZXhpdCAwIGFmdGVyIGVycm9ycy4KCjEuIFRoZSBleGl0IHN0YXR1cyBpcyB6ZXJv
+LgoyLiBBIHNjYW4gb2YgdGhlIGxvZyBmaW5kcyBubyBlcnJvciBwYXR0ZXJuczogdG9vbCBlcnJv
+cnMsIGxpY2Vuc2UgY2hlY2tvdXQgZmFpbHVyZXMsIG1pc3NpbmcgZmlsZXMgb3IgbGlicmFyaWVz
+LCB1bnJlc29sdmVkIHJlZmVyZW5jZXMuCjMuIEV2ZXJ5IGV4cGVjdGVkIG91dHB1dCBleGlzdHMg
+YW5kIGlzIG5vbi1lbXB0eS4KCkZvciBMU0Ygam9icywgdGhlIGpvYidzIGV4aXQgc3RhdHVzIG11
+c3QgcmVhY2ggdGhlIGRpc3BhdGNoZXIuIFVzZSBhIHN1Ym1pc3Npb24gbW9kZSB0aGF0IHdhaXRz
+IGZvciBjb21wbGV0aW9uIGFuZCByZXR1cm5zIHRoZSBqb2IncyBzdGF0dXMsIGFuZCBjb25maXJt
+IHRoZSBtZWNoYW5pc20gd2l0aCBgbWFuIGJzdWJgIG9uIHRoZSB0YXJnZXQgY2x1c3Rlci4KCkEg
+ZmFpbHVyZSBhbnl3aGVyZSBzdG9wcyB0aGUgcGlwZWxpbmUgd2l0aCBhIG5vbi16ZXJvIGV4aXQg
+YW5kIGEgbWVzc2FnZSBuYW1pbmcgdGhlIGZhaWxlZCBzdGVwIGFuZCBpdHMgbG9nLiBOZXZlciBs
+ZWF2ZSBhIGZhaWx1cmUgaW4gYSBsb2cgbm9ib2R5IHJlYWRzLgoKIyMgUmVsZWFzZSBwcmluY2lw
+bGVzCgpVcGhvbGQgZWFjaCBwcmluY2lwbGUgdGhyb3VnaCB0aGUgbWVjaGFuaXNtIG5hbWVkLCBu
+b3QganVzdCB0aGUgaW50ZW50LgoKLSAqKkltbXV0YWJsZS4qKiBCdWlsZCB0aGUgcmVsZWFzZSBp
+biBhIHN0YWdpbmcgYXJlYSwgdmVyaWZ5IGl0IHRoZXJlLCB0aGVuIHB1Ymxpc2ggd2l0aCBhIHNp
+bmdsZSBhdG9taWMgbW92ZSBpbnRvIHRoZSByZWxlYXNlIHBhdGggYW5kIG1ha2UgdGhlIHB1Ymxp
+c2hlZCB0cmVlIHJlYWQtb25seS4gRml4ZXMgZ28gaW50byBhIG5ldyByZWxlYXNlLCBuZXZlciBh
+biBlZGl0IHRvIGFuIG9sZCBvbmUuCi0gKipUcmFjZWFibGUuKiogVGhlIG1hbmlmZXN0IHJlY29y
+ZHMgdGhlIFNPUyB0YWcgb3IgZXhhY3QgcmV2aXNpb25zLCB0b29sIG5hbWVzIGFuZCB2ZXJzaW9u
+cywgdGhlIGZsb3cgc2NyaXB0IHJldmlzaW9uLCB0aGUgY29tbWFuZCBsaW5lLCB1c2VyLCBob3N0
+LCBhbmQgdGltZXN0YW1wLgotICoqVmVyaWZpYWJsZS4qKiBUaGUgbWFuaWZlc3QgbGlzdHMgYSBj
+aGVja3N1bSBwZXIgZmlsZS4gVmVyaWZ5IGl0IHdoZW4gdGhlIHJlbGVhc2UgaXMgY29uc3VtZWQs
+IG5vdCBvbmx5IHdoZW4gaXQgaXMgY3JlYXRlZC4KLSAqKlNjcmlwdGVkLioqIEV2ZXJ5IHJlbGVh
+c2Ugc3RlcCBpcyBzY3JpcHRlZCBhbmQgcmUtcnVubmFibGUuIEZsYWcgYW55IG1hbnVhbCBzdGVw
+IGFzIGEgZGVmZWN0LgotICoqQ29uY3VycmVuY3ktc2FmZS4qKiBBbnl0aGluZyB0b3VjaGluZyBh
+IHJlbGVhc2UgYXJlYSBvciBzaGFyZWQgcnVuIGRpcmVjdG9yeSB1c2VzIHVuaXF1ZSBydW4gZGly
+ZWN0b3JpZXMsIGEgbG9jayAoZm9yIGV4YW1wbGUgYSBgbWtkaXJgLWJhc2VkIGxvY2sgZGlyZWN0
+b3J5KSwgYW5kIGNsZWFudXAgb24gaW50ZXJydXB0IChzaWduYWwgaGFuZGxlciBpbiBQeXRob24s
+IGBvbmludHJgIGluIHRjc2gpLiBDb25maXJtIGxvY2sgYmVoYXZpb3Igb24gdGhlIGFjdHVhbCBm
+aWxlc3lzdGVtLCBlc3BlY2lhbGx5IE5GUy4KCiMjIEFzayB2ZXJzdXMgcHJvY2VlZAoKV2hlbiBh
+IHJlcXVlc3QgbGVhdmVzIG9wZW4gYSBkZWNpc2lvbiB0aGF0IHdvdWxkIGNoYW5nZSB0aGUgY29k
+ZSBvciB0aGUgcmVjb21tZW5kYXRpb24sIGFzayBiZWZvcmUgd3JpdGluZy4gQXNrIG9ubHkgYWJv
+dXQgd2hhdCBjaGFuZ2VzIHRoZSBhbnN3ZXIsIGFuZCBncm91cCB0aGUgcXVlc3Rpb25zLiBUeXBp
+Y2FsIG9wZW4gZGVjaXNpb25zOgoKLSByZWxlYXNlIHRpZXJzIGFuZCB3aG8gY29uc3VtZXMgZWFj
+aAotIFNPUyBwcm9qZWN0IGFuZCB0YWdnaW5nIGNvbnZlbnRpb25zCi0gZGlyZWN0b3J5IGxheW91
+dAotIHdoaWNoIGNoZWNrcyBnYXRlIGEgcmVsZWFzZQotIExTRiBxdWV1ZSBhbmQgcmVzb3VyY2Ug
+Y29uc3RyYWludHMKLSB3aGV0aGVyIGEgc2NyaXB0IG11c3QgYmUgc2FmZSB0byBydW4gY29uY3Vy
+cmVudGx5Ci0gY2hlY2tzdW0gdG9vbCBhbmQgYWxnb3JpdGhtCgpXaGVuIHRoZSBpbnRlbnQgaXMg
+Y2xlYXIsIHByb2NlZWQuIFdoZW4gcnVubmluZyB1bmF0dGVuZGVkIChmb3IgZXhhbXBsZSBpbiBD
+bGF1ZGUgQ29kZSB3aXRoIG5vIHVzZXIgYXZhaWxhYmxlKSwgcGljayB0aGUgbW9zdCByZWFzb25h
+YmxlIGludGVycHJldGF0aW9uLCBjb250aW51ZSwgYW5kIHJlY29yZCB0aGUgYXNzdW1wdGlvbiBp
+biB0aGUgc2NyaXB0IGhlYWRlciBvciBhdCB0aGUgdG9wIG9mIHRoZSBvdXRwdXQuCgojIyBSZXZp
+ZXdzIGFuZCBkZWJ1ZwoKT3JkZXIgcmV2aWV3IGZpbmRpbmdzIGJ5IGltcGFjdDoKCjEuIGFueXRo
+aW5nIHRoYXQgY2FuIHNoaXAgYSB3cm9uZyBvciBpbmNvbXBsZXRlIHJlbGVhc2UKMi4gbG9zcyBv
+ZiB0cmFjZWFiaWxpdHkgb3IgcmVwcm9kdWNpYmlsaXR5CjMuIGVycm9ycyB0aGF0IGFyZSBoaWRk
+ZW4gb3Igc3dhbGxvd2VkLCBpbmNsdWRpbmcgdG9vbCBlcnJvcnMgYmVoaW5kIGEgemVybyBleGl0
+IHN0YXR1cwo0LiBoYXphcmRzIGZyb20gY29uY3VycmVudCBydW5zIG9yIHBhcnRpYWxseSB3cml0
+dGVuIG91dHB1dHMKNS4gcG9ydGFiaWxpdHkgYW5kIGVudmlyb25tZW50IGFzc3VtcHRpb25zCjYu
+IG1haW50YWluYWJpbGl0eQoKRm9yIGVhY2ggZmluZGluZywgZ2l2ZSB0aGUgbG9jYXRpb24sIHRo
+ZSBjb25zZXF1ZW5jZSwgYW5kIHRoZSBmaXguCgpXaGVuIGRlYnVnZ2luZywgc3RhdGUgdGhlIGh5
+cG90aGVzaXMgYW5kIHRoZSBldmlkZW5jZSBiZWhpbmQgaXQsIGNpdGluZyBsb2cgbGluZXMgb3Ig
+Y29tbWFuZCBvdXRwdXQuIFdoZXJlIGl0J3MgY2hlYXAsIHByb3Bvc2UgdGhlIHNtYWxsZXN0IGV4
+cGVyaW1lbnQgdGhhdCB3b3VsZCBjb25maXJtIG9yIHJ1bGUgaXQgb3V0LgoKIyMgU2NvcGUgYW5k
+IHByb3BvcnRpb24KCkNoYW5nZSBvbmx5IHdoYXQgdGhlIHRhc2sgbmVlZHMuIExpc3QgcHJvYmxl
+bXMgaW4gdW5yZWxhdGVkIHNjcmlwdHMgb3IgZmxvdyBzZXR1cCBzZXBhcmF0ZWx5IGF0IHRoZSBl
+bmQ7IGRvbid0IGZpeCB0aGVtLiBXaGVuIGEgdGFjdGljYWwgZml4IGhpZGVzIGEgc3RydWN0dXJh
+bCBwcm9ibGVtLCBnaXZlIHRoZSB0YWN0aWNhbCBmaXggYW5kIG5hbWUgdGhlIGxhc3Rpbmcgb25l
+LgoKTWF0Y2ggdGhlIHNvbHV0aW9uIHRvIHRoZSBwcm9ibGVtLiBBIG9uZS1vZmYgY2hlY2sgc3Rh
+eXMgYSBzaG9ydCBzY3JpcHQuIERvbid0IGJ1aWxkIGZyYW1ld29ya3MsIGNvbmZpZ3VyYXRpb24g
+bGF5ZXJzLCBvciBwbHVnaW4gc3lzdGVtcyB0aGUgY3VycmVudCB0YXNrIGRvZXNuJ3QgbmVlZC4K
+CiMjIE91dHB1dAoKTGVhZCB3aXRoIHRoZSBhbnN3ZXIgb3IgdGhlIGRlbGl2ZXJhYmxlLCBpbiB0
+aWdodCB0ZWNobmljYWwgcHJvc2UuIEJlZm9yZSBhbnkgc2NyaXB0LCBnaXZlIGEgc2hvcnQgYmxv
+Y2sgbGlzdGluZyBpdHMgYXNzdW1wdGlvbnMsIHRoZSBpbnB1dHMgaXQgcmVhZHMsIHRoZSBvdXRw
+dXRzIGl0IHdyaXRlcywgYW5kIGl0cyBleGl0IGNvZGVzLgoKRG9uJ3QgcmVzdGF0ZSB0aGUgcXVl
+c3Rpb24sIGFkZCBhIGNsb3Npbmcgc3VtbWFyeSwgaGVkZ2Ugd2l0aG91dCBuYW1pbmcgdGhlIHNw
+ZWNpZmljIHVuY2VydGFpbnR5LCBvciBtaXggc2hlbGwgZGlhbGVjdHMgKG5vIGJhc2ggc3ludGF4
+IGluIHRjc2gpLgoKIyMgUmV2aWV3IG5vdGVzIChkZWxldGUgYmVmb3JlIHVzZSkKClRoZSBvcmln
+aW5hbCB3YXMgc291bmQgb24gaW50ZW50OyB0aGUgcmV3cml0ZSB0dXJucyBpdHMgcHJpbmNpcGxl
+cyBpbnRvIG1lY2hhbmlzbXMgYW5kIGZpbGxzIHRoZSBnYXBzIG1vc3QgbGlrZWx5IHRvIGxldCBh
+IGJhZCByZWxlYXNlIHRocm91Z2guCgp8IENoYW5nZSB8IFdoeSB8IEltcGFjdCB8CnwgLS0tIHwg
+LS0tIHwgLS0tIHwKfCBBZGRlZCBFcnJvciBkZXRlY3Rpb24gc2VjdGlvbiAoZXhpdCBzdGF0dXMg
+KyBsb2cgc2NhbiArIG91dHB1dHMpIHwgRURBIHRvb2xzIG9mdGVuIGV4aXQgMCBvbiBlcnJvcnM7
+IHRoZSBvcmlnaW5hbCBvbmx5IHNhaWQgImNoZWNrIGAkc3RhdHVzYCIgfCBIaWRkZW4gZXJyb3Jz
+IHwKfCBJbW11dGFiaWxpdHkgbm93IG1lYW5zIHN0YWdpbmcg4oaSIHZlcmlmeSDihpIgYXRvbWlj
+IG1vdmUg4oaSIHJlYWQtb25seSB8IE9yaWdpbmFsIHN0YXRlZCB0aGUgcHJpbmNpcGxlIGJ1dCBu
+b3QgaG93IGEgaGFsZi13cml0dGVuIHJlbGVhc2UgaXMgcHJldmVudGVkIHwgV3JvbmcvaW5jb21w
+bGV0ZSByZWxlYXNlIHwKfCBNYW5pZmVzdCBmaWVsZHMgbGlzdGVkIGV4cGxpY2l0bHkgfCAiVHJh
+Y2VhYmxlIiBhbG9uZSBsZXRzIENsYXVkZSBvbWl0IHRvb2wgdmVyc2lvbnMgb3Igc2NyaXB0IHJl
+dmlzaW9uIHwgVHJhY2VhYmlsaXR5IHwKfCB0Y3NoOiBub24tc2hvcnQtY2lyY3VpdCBgJD92YXJg
+LCBwaXBlbGluZXMvYGFueWVycm9yYCwgYGdyZXBgIGV4aXQgY29kZXMsIGA6cWAsIGBvbmludHJg
+LCBubyBgLWVgIHwgUmVhbCB0Y3NoIHRyYXBzIHRoZSBvcmlnaW5hbCBtaXNzZWQgb3IgdW5kZXJz
+dGF0ZWQgfCBIaWRkZW4gZXJyb3JzLCBjb25jdXJyZW5jeSB8CnwgQ29uY3VycmVuY3k6IHVuaXF1
+ZSBydW4gZGlycywgbG9jayBkaXIsIGludGVycnVwdCBjbGVhbnVwIHwgT3JpZ2luYWwgbGlzdGVk
+IGNvbmN1cnJlbmN5IG9ubHkgYXMgYSBxdWVzdGlvbiB0byBhc2sgfCBDb25jdXJyZW5jeSB8Cnwg
+TFNGIGpvYiBzdGF0dXMgbXVzdCByZWFjaCB0aGUgZGlzcGF0Y2hlciB8IEEgZGlzcGF0Y2hlciB0
+aGF0IGlnbm9yZXMgam9iIHN0YXR1cyByZXBvcnRzIHN1Y2Nlc3Mgb24gZmFpbGVkIGpvYnMgfCBI
+aWRkZW4gZXJyb3JzIHwKfCBTY3JpcHQgaGVhZGVyIG5vdyBpbmNsdWRlcyBleGl0IGNvZGVzIHwg
+dGNzaCBoYXMgbm8gZnVuY3Rpb25zLCBzbyBleGl0IGNvZGVzIGFyZSB0aGUgc2NyaXB0IGludGVy
+ZmFjZSB8IE1haW50YWluYWJpbGl0eSB8CnwgTWVyZ2VkIHRoZSBzZXBhcmF0ZSAiYXZvaWQgdGhl
+c2UgcGF0dGVybnMiIGxpc3QgaW50byBpdHMgc2VjdGlvbnMgfCBJdCByZXBlYXRlZCBydWxlcyBz
+dGF0ZWQgZWFybGllciB8IFByb21wdCBsZW5ndGggfAoKIyMjIE9wZW4gZGVjaXNpb25zCgotIFt4
+XSAqKmAuc2hgIGV4dGVuc2lvbiBmb3IgdGNzaC4qKiBSZXNvbHZlZDogdG9vbGluZyBtb3ZlZCB0
+byBQeXRob247IHJlbWFpbmluZyB0Y3NoIHNldHVwIGZpbGVzIHVzZSBgLmNzaGAuCi0gWyBdICoq
+Tm8gYC1lYCBpbiB0aGUgc2hlYmFuZyoqICh0Y3NoIHNldHVwIGZpbGVzIG9ubHkgbm93KS4gSSBj
+aG9zZSBleHBsaWNpdCBgJHN0YXR1c2AgY2hlY2tzIGJlY2F1c2UgYC1lYCBhYm9ydHMgb24gZXhw
+ZWN0ZWQgbm9uLXplcm8gZXhpdHMuIFJldmVyc2UgdGhpcyBpZiB5b3UgcHJlZmVyIGZhaWwtZmFz
+dCB3aXRoIGRvY3VtZW50ZWQgZXhjZXB0aW9ucy4KLSBbIF0gKipDaGVja3N1bSB0b29sLioqIEFk
+ZGVkIHRvIHRoZSBhc2stbGlzdCByYXRoZXIgdGhhbiBmaXhlZCAoZS5nLiBgbWQ1c3VtYCB2cyBg
+c2hhMjU2c3VtYCk7IGZpeCBpdCBpbiB0aGUgcHJvbXB0IGlmIHlvdSBoYXZlIGEgc3RhbmRhcmQu
+CgojIyMgVW5jZXJ0YWludGllcyB0byBjb25maXJtCgotIGBhbnllcnJvcmAgYXZhaWxhYmlsaXR5
+IGRlcGVuZHMgb24gdGNzaCB2ZXJzaW9uOyBjaGVjayB3aXRoIGBzZXQgYW55ZXJyb3JgIG9uIHlv
+dXIgaG9zdHMuCi0gV2hpY2ggYGJzdWJgIG1vZGUgcmV0dXJucyB0aGUgam9iJ3MgZXhpdCBzdGF0
+dXMgdG8gdGhlIGNhbGxlciB2YXJpZXMgYnkgTFNGIHNldHVwOyBjb25maXJtIHdpdGggYG1hbiBi
+c3ViYCBvbiB5b3VyIGNsdXN0ZXIuCi0gYG1rZGlyYC1iYXNlZCBsb2NraW5nIG9uIE5GUyBzaG91
+bGQgYmUgdGVzdGVkIG9uIHlvdXIgZmlsZXN5c3RlbSBiZWZvcmUgeW91IHJlbHkgb24gaXQuCg==
 #@@END docs/system_prompt.md
-#@@FILE flowgen/README.md mode=644 lines=53 eol=1 md5=16e41ae6b81120f6a8952fe221a1389c
+#@@FILE flowgen/README.md mode=644 enc=text lines=53 eol=1 md5=16e41ae6b81120f6a8952fe221a1389c
 # flowgen
 
 Generates EDA run directories from one Tcl block config. Python 3.6+ (with tkinter), standard library only.
@@ -346,7 +344,7 @@ Relative paths are resolved from the config file's own directory. Misspelled `FM
 | `ENV_SOURCE` | | cshrc files sourced by the run script |
 | `ENV_SETENV(NAME)` | | environment variables set by the run script |
 #@@END flowgen/README.md
-#@@FILE flowgen/examples/block_config.tcl mode=644 lines=68 eol=1 md5=89b4fe566b3fd60a1bcfd49c8bdaca09
+#@@FILE flowgen/examples/block_config.tcl mode=644 enc=text lines=68 eol=1 md5=89b4fe566b3fd60a1bcfd49c8bdaca09
 # =============================================================================
 # block_config.tcl - block description read by flowgen.py
 #
@@ -416,7 +414,7 @@ set FM_LIBS [list \
 #   post_verify after verify (extra reports)
 # set FM_HOOK(pre_match) $ROOT/fm/constraints.tcl
 #@@END flowgen/examples/block_config.tcl
-#@@FILE flowgen/flowgen.py mode=755 lines=430 eol=1 md5=345a5846d4456ef6aa79bc23552cfc08
+#@@FILE flowgen/flowgen.py mode=755 enc=text lines=430 eol=1 md5=345a5846d4456ef6aa79bc23552cfc08
 #!/usr/bin/env python3
 """flowgen - generate EDA run directories from a Tcl block config.
 
@@ -848,7 +846,7 @@ def main(argv=None):
 if __name__ == "__main__":
     sys.exit(main())
 #@@END flowgen/flowgen.py
-#@@FILE tools/pack.py mode=755 lines=111 eol=1 md5=a272f90d2847c2be011c2facce3cffb5
+#@@FILE tools/pack.py mode=755 enc=text lines=110 eol=1 md5=cd44423f674587050cb28e99e2a71e53
 #!/usr/bin/env python3
 """pack - concatenate a repo's files into one plain-text bundle.
 
@@ -859,19 +857,22 @@ ROOT defaults to the git repo containing the current directory (or the
 current directory if not in git). In a git repo only tracked files are
 packed; otherwise every file under ROOT except .git/ is packed.
 
-The bundle is plain text, so it survives copy/paste and CRLF line endings.
+The bundle is pure ASCII, so it survives copy/paste, downloads and CRLF
+line endings. Pure-ASCII text files are stored as readable lines; any other
+file (non-ASCII text, binary) is stored as base64 and restored byte-exact.
 Recreate the files with unpack.py (which is itself inside the bundle).
 
 Bundle format:
-    #@@PACK 1
-    #@@FILE <path> mode=<octal> lines=<n> eol=<0|1> md5=<hex>
-    <n lines of file content>
+    #@@PACK 2
+    #@@FILE <path> mode=<octal> enc=<text|b64> lines=<n> eol=<0|1> md5=<hex>
+    <n lines: file content (text) or base64 of the raw bytes (b64)>
     #@@END <path>
 
 Python 3.6+, standard library only.
 """
 
 import argparse
+import base64
 import hashlib
 import os
 import subprocess
@@ -912,48 +913,44 @@ def main(argv=None):
     root = os.path.abspath(args.root or repo_root())
     output = os.path.abspath(args.output or "bundle.txt")
 
-    chunks = ["#@@PACK 1\n"]
-    packed, non_ascii, skipped = 0, [], []
+    chunks = ["#@@PACK 2\n"]
+    packed, encoded = 0, []
     for rel in list_files(root):
         path = os.path.join(root, rel)
         if os.path.abspath(path) == output:
             continue
         with open(path, "rb") as fh:
             data = fh.read()
-        try:
-            text = data.decode("utf-8")
-        except UnicodeDecodeError:
-            skipped.append(rel)          # binary file: not supported
-            continue
-        if "\0" in text:
-            skipped.append(rel)
-            continue
-        if text.startswith("#@@PACK"):
+        if data.startswith(b"#@@PACK"):
             continue                     # never pack a bundle inside a bundle
-        if any(ord(c) > 127 for c in text):
-            non_ascii.append(rel)
-
-        text = text.replace("\r\n", "\n")
-        eol = 1 if text.endswith("\n") or not text else 0
-        lines = text.split("\n")
-        if eol:
-            lines = lines[:-1]           # drop the empty piece after the last newline
         mode = os.stat(path).st_mode & 0o777
-        md5 = hashlib.md5(text.encode("utf-8")).hexdigest()
 
-        chunks.append("#@@FILE %s mode=%03o lines=%d eol=%d md5=%s\n"
-                      % (rel, mode, len(lines), eol, md5))
+        norm = data.replace(b"\r\n", b"\n")
+        if all(b in b"\t\n" or 32 <= b < 127 for b in norm):
+            enc, data = "text", norm
+            text = data.decode("ascii")
+            eol = 1 if text.endswith("\n") or not text else 0
+            lines = text.split("\n")
+            if eol:
+                lines = lines[:-1]       # drop the empty piece after the last newline
+        else:
+            enc, eol = "b64", 1
+            b64 = base64.b64encode(data).decode("ascii")
+            lines = [b64[i:i + 76] for i in range(0, len(b64), 76)]
+            encoded.append(rel)
+        md5 = hashlib.md5(data).hexdigest()
+
+        chunks.append("#@@FILE %s mode=%03o enc=%s lines=%d eol=%d md5=%s\n"
+                      % (rel, mode, enc, len(lines), eol, md5))
         chunks.extend(line + "\n" for line in lines)
         chunks.append("#@@END %s\n" % rel)
         packed += 1
 
-    with open(output, "w", encoding="utf-8", newline="\n") as fh:
+    with open(output, "w", encoding="ascii", newline="\n") as fh:
         fh.writelines(chunks)
 
-    for rel in skipped:
-        print("pack: WARNING: skipped binary file: %s" % rel)
-    for rel in non_ascii:
-        print("pack: WARNING: non-ASCII characters in: %s" % rel)
+    for rel in encoded:
+        print("pack: note: not pure ASCII text, stored as base64: %s" % rel)
     print("pack: %d files from %s -> %s" % (packed, root, output))
     return 0
 
@@ -961,7 +958,7 @@ def main(argv=None):
 if __name__ == "__main__":
     sys.exit(main())
 #@@END tools/pack.py
-#@@FILE tools/unpack.py mode=755 lines=89 eol=1 md5=ad897e988e980e269462c0e5e0c1d5c7
+#@@FILE tools/unpack.py mode=755 enc=text lines=112 eol=1 md5=4d905859699edf78b6f52d403c2e93c7
 #!/usr/bin/env python3
 """unpack - recreate files from a bundle made by pack.py.
 
@@ -976,47 +973,70 @@ Python 3.6+, standard library only.
 """
 
 import argparse
+import base64
+import binascii
 import hashlib
 import os
 import re
 import sys
 
-HEADER_RE = re.compile(r"^#@@FILE (\S+) mode=([0-7]{3}) lines=(\d+) eol=([01]) md5=([0-9a-f]{32})$")
+HEADER_RE = re.compile(r"^#@@FILE (\S+) mode=([0-7]{3}) enc=(text|b64) lines=(\d+) "
+                       r"eol=([01]) md5=([0-9a-f]{32})$")
 
 
 class BundleError(Exception):
     pass
 
 
+def read_bundle(bundle_path):
+    with open(bundle_path, "rb") as fh:
+        raw = fh.read()
+    if raw.startswith(b"\xef\xbb\xbf"):
+        raw = raw[3:]                   # BOM added by some editors
+    try:
+        return raw.decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise BundleError("bundle has a non-ASCII byte 0x%02x at offset %d: it was changed "
+                          "during transfer (character-set conversion). Bundles are pure "
+                          "ASCII; copy it again as-is (e.g. download the raw file)."
+                          % (raw[exc.start], exc.start))
+
+
 def parse(bundle_path):
-    """Return [(path, mode, text)] after validating the whole bundle."""
-    with open(bundle_path, encoding="utf-8") as fh:
-        lines = [l.rstrip("\r\n") for l in fh]
-    if not lines or lines[0] != "#@@PACK 1":
-        raise BundleError("not a pack bundle (missing '#@@PACK 1' first line)")
+    """Return [(path, mode, bytes)] after validating the whole bundle."""
+    lines = read_bundle(bundle_path).splitlines()
+    if not lines or lines[0] != "#@@PACK 2":
+        raise BundleError("not a pack.py bundle, or made by a different pack.py version "
+                          "(first line must be '#@@PACK 2')")
 
     files, i = [], 1
     while i < len(lines):
-        if lines[i] == "":
+        if lines[i].strip() == "":
             i += 1                      # tolerate blank lines between files
             continue
-        m = HEADER_RE.match(lines[i])
+        m = HEADER_RE.match(lines[i].rstrip())
         if not m:
             raise BundleError("line %d: expected #@@FILE header, got: %r" % (i + 1, lines[i][:80]))
-        path, mode, count, eol, md5 = m.groups()
+        path, mode, enc, count, eol, md5 = m.groups()
         count = int(count)
         if path.startswith("/") or ".." in path.split("/"):
             raise BundleError("line %d: unsafe path: %s" % (i + 1, path))
 
         body = lines[i + 1:i + 1 + count]
         end = i + 1 + count
-        if len(body) != count or end >= len(lines) or lines[end] != "#@@END " + path:
+        if len(body) != count or end >= len(lines) or lines[end].rstrip() != "#@@END " + path:
             raise BundleError("%s: truncated or damaged (missing #@@END)" % path)
 
-        text = "\n".join(body) + ("\n" if eol == "1" and count else "")
-        if hashlib.md5(text.encode("utf-8")).hexdigest() != md5:
+        if enc == "text":
+            data = ("\n".join(body) + ("\n" if eol == "1" and count else "")).encode("ascii")
+        else:
+            try:
+                data = base64.b64decode("".join(l.strip() for l in body), validate=True)
+            except (binascii.Error, ValueError):
+                raise BundleError("%s: damaged base64 data" % path)
+        if hashlib.md5(data).hexdigest() != md5:
             raise BundleError("%s: MD5 mismatch (content was changed in transit)" % path)
-        files.append((path, int(mode, 8), text))
+        files.append((path, int(mode, 8), data))
         i = end + 1
     return files
 
@@ -1030,18 +1050,18 @@ def main(argv=None):
 
     try:
         files = parse(args.bundle)
-    except (OSError, UnicodeDecodeError, BundleError) as exc:
+    except (OSError, BundleError) as exc:
         sys.exit("unpack: ERROR: %s" % exc)
 
-    for path, mode, text in files:
+    for path, mode, data in files:
         if args.list:
             print("%03o %s" % (mode, path))
             continue
         dest = os.path.join(args.dir, *path.split("/"))
         if os.path.dirname(dest):
             os.makedirs(os.path.dirname(dest), exist_ok=True)
-        with open(dest, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(text)
+        with open(dest, "wb") as fh:
+            fh.write(data)
         os.chmod(dest, mode)
 
     if not args.list:
