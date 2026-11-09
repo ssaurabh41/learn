@@ -7,7 +7,7 @@ The first supported tool is Synopsys Formality, with the `rtl2syn` flow: RTL ref
 ## Usage
 
 ```
-flowgen.py configs/block.config.tcl
+flowgen.py configs/my_block.config.tcl
 ```
 
 This creates the following in the current directory. If the directory already exists, it is overwritten.
@@ -31,7 +31,7 @@ The log goes to `rtl2syn/rtl2syn.log`, the reports to `rtl2syn/reports/`, and th
 
 ## Config
 
-The config is plain Tcl and is evaluated by a real Tcl interpreter. See `configs/block.config.tcl` for every supported variable.
+The config is plain Tcl and is evaluated by a real Tcl interpreter. See `block.config.template.tcl` for every supported variable, and copy from it to start a new block config.
 
 Block configs live in the top-level `common_files/` directory; `flowgen/configs` is a link to it. `common_files/` holds your golden configs on your own machine: it is never packed into `bundle.txt`, and `unpack.py` never touches it.
 
