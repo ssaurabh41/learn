@@ -7,14 +7,14 @@ The first supported tool is Synopsys Formality, with the `rtl2syn` flow: RTL ref
 ## Usage
 
 ```
-flowgen.py block_config.tcl
+flowgen.py configs/block.config.tcl
 ```
 
 This creates the following in the current directory. If the directory already exists, it is overwritten.
 
 ```
-<yyyy_mm_dd_hh_mm_ss>_formality/
-    block_config.tcl      copy of the config used
+<yyyy_mm_dd_hh_mm_ss>_<DESIGN>_formality/
+    block.config.tcl      copy of the config used
     run_rtl2syn.csh       run script (tcsh): sets up the env, runs fm_shell
     rtl2syn/
         rtl2syn.tcl       generated Formality script
@@ -23,7 +23,7 @@ This creates the following in the current directory. If the directory already ex
 Nothing is launched. To run a flow:
 
 ```
-cd <yyyy_mm_dd_hh_mm_ss>_formality
+cd <yyyy_mm_dd_hh_mm_ss>_<DESIGN>_formality
 ./run_rtl2syn.csh
 ```
 
@@ -31,7 +31,7 @@ The log goes to `rtl2syn/rtl2syn.log`, the reports to `rtl2syn/reports/`, and th
 
 ## Config
 
-The config is plain Tcl and is evaluated by a real Tcl interpreter. See `examples/block_config.tcl` for every supported variable.
+The config is plain Tcl and is evaluated by a real Tcl interpreter. See `configs/block.config.tcl` for every supported variable.
 
 Relative paths are resolved from the config file's own directory. Misspelled `FM_*` or `ENV_*` variables produce a warning, and missing input files produce warnings. Config errors are all reported together, and nothing is generated if there are any.
 

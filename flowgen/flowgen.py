@@ -2,9 +2,9 @@
 """flowgen - generate EDA run directories from a Tcl block config.
 
 Usage:
-    flowgen.py block_config.tcl
+    flowgen.py block.config.tcl
 
-Creates  ./<yyyy_mm_dd_hh_mm_ss>_formality/  in the current directory with
+Creates  ./<yyyy_mm_dd_hh_mm_ss>_<DESIGN>_formality/  in the current directory with
 one run script per flow (run_<flow>.csh) and one sub-directory per flow
 holding the generated Formality Tcl script. Nothing is launched; run the
 scripts manually.
@@ -87,7 +87,7 @@ def load_tcl_config(path):
 
 
 class Config(object):
-    """Typed, validated view of block_config.tcl. Collects all problems."""
+    """Typed, validated view of block.config.tcl. Collects all problems."""
 
     def __init__(self, path):
         self.path = os.path.abspath(path)
@@ -377,7 +377,7 @@ def write_file(path, text, executable=False):
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Generate a Formality run directory from a Tcl block config.")
-    parser.add_argument("config", help="block config file, e.g. block_config.tcl")
+    parser.add_argument("config", help="block config file, e.g. block.config.tcl")
     args = parser.parse_args(argv)
 
     if not os.path.isfile(args.config):
@@ -397,7 +397,8 @@ def main(argv=None):
 
     now = datetime.datetime.now()
     stamp = now.strftime("%Y-%m-%d %H:%M:%S")
-    run_dir = os.path.abspath(now.strftime("%Y_%m_%d_%H_%M_%S") + "_formality")
+    block = re.sub(r"[^A-Za-z0-9_.-]", "_", cfg.design)   # safe as a directory name
+    run_dir = os.path.abspath("%s_%s_formality" % (now.strftime("%Y_%m_%d_%H_%M_%S"), block))
 
     try:
         # Render everything before touching the disk, so a bad value
@@ -413,7 +414,7 @@ def main(argv=None):
         print("flowgen: WARNING: %s exists; overwriting" % run_dir)
         shutil.rmtree(run_dir)
     os.makedirs(run_dir)
-    shutil.copy2(cfg.path, os.path.join(run_dir, "block_config.tcl"))  # record of inputs
+    shutil.copy2(cfg.path, os.path.join(run_dir, "block.config.tcl"))  # record of inputs
 
     for flow, (fm_tcl, run_csh) in outputs.items():
         os.makedirs(os.path.join(run_dir, flow))

@@ -1,12 +1,12 @@
 # =============================================================================
-# block_config.tcl - block description read by flowgen.py
+# block.config.tcl - block description read by flowgen.py
 #
 # Plain Tcl: use set, lists, arrays, $env(...), [glob ...], [file join ...].
 # Relative paths are relative to THIS file's directory.
 # Only the variables below are used; misspelled FM_*/ENV_* names are warned
 # about. Any other variable (e.g. ROOT below) is just a helper for you.
 #
-# Generate:   flowgen.py block_config.tcl
+# Generate:   flowgen.py block.config.tcl
 # =============================================================================
 
 # Helper variable (not read by flowgen)
