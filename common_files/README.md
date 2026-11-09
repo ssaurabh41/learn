@@ -4,4 +4,4 @@ Golden block configs (`<block>.config.tcl`). On your own machine this
 directory is the source of truth: it is never packed into `bundle.txt`, and
 `unpack.py` never touches it. `flowgen/configs` links here.
 
-Start a new config from `flowgen/block.config.template.tcl`.
+Start a new config from `flowgen/block_template.config.tcl`.

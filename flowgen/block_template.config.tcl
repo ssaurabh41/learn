@@ -1,5 +1,5 @@
 # =============================================================================
-# block.config.template.tcl - TEMPLATE block config for flowgen.py
+# block_template.config.tcl - TEMPLATE block config for flowgen.py
 #
 # Lists every variable flowgen understands. Copy what you need into your
 # golden config in common_files/ (e.g. common_files/my_block.config.tcl).
