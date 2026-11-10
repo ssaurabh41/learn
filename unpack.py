@@ -4,18 +4,21 @@
 Usage:
     unpack.py BUNDLE [-d DIR] [--force] [--list]
 
-Files are written under DIR (default: current directory). Then the
-directory flowgen/configs/ (which holds block_template.config.tcl from the
-bundle) gets one link per file in your local DIR/common_files/ (the golden
-block configs):
+Files are written under DIR (default: current directory). Then
+flowgen/configs/ gets one link per config file (*.config.tcl) in your local
+DIR/common_files/, the template included:
     flowgen/configs/<name> -> ../../common_files/<name>
 Re-run unpack (with --force) to pick up configs added to common_files/ later.
 
-If a top-level directory from the bundle (flowgen/) already exists in DIR,
-unpack stops with an error and changes nothing. With --force that directory
-is removed first and recreated from the bundle, so no stale files are left
-behind. Nothing else in DIR is removed: common_files/ is never in a bundle
-and is never touched. Top-level files (pack.py, unpack.py) are overwritten.
+If a top-level directory from the bundle (flowgen/, examples/) already
+exists in DIR, unpack stops with an error and changes nothing. With --force
+those directories are removed first and recreated from the bundle, so no
+stale files are left behind.
+
+common_files/ is shared with you: the bundle's files there (the templates
+and csv2config.py) are written or overwritten, and nothing else in it is
+removed or changed. Your own block configs are never touched. Top-level
+files (pack.py, unpack.py, ...) are overwritten.
 
 Every file is checked against its MD5 before anything is written; a damaged
 bundle writes nothing.
@@ -32,7 +35,8 @@ import re
 import shutil
 import sys
 
-CONFIG_SRC = "common_files"          # local golden configs (never in a bundle)
+CONFIG_SRC = "common_files"          # your golden configs + shipped templates
+SHARED_DIRS = (CONFIG_SRC,)           # bundle files written here, nothing removed
 CONFIG_LINK_DIR = "flowgen/configs"   # created by unpack, one link per config
 
 HEADER_RE = re.compile(r"^#@@FILE (\S+) mode=([0-7]{3}) enc=(text|b64) lines=(\d+) "
@@ -111,13 +115,12 @@ def link_configs(out_dir):
         return
     rel_src = os.path.relpath(src, link_dir)       # ../../common_files
     names = sorted(n for n in os.listdir(src)
-                   if not n.startswith(".") and os.path.isfile(os.path.join(src, n)))
+                   if n.endswith(".config.tcl") and os.path.isfile(os.path.join(src, n)))
     linked = 0
     for name in names:
         dest = os.path.join(link_dir, name)
-        if os.path.lexists(dest):        # e.g. block_template.config.tcl from the bundle
-            print("unpack: WARNING: %s/%s already exists (from the bundle); not linked"
-                  % (CONFIG_LINK_DIR, name))
+        if os.path.lexists(dest):        # a file of that name came with the bundle
+            print("unpack: WARNING: %s/%s already exists; not linked" % (CONFIG_LINK_DIR, name))
             continue
         os.symlink(os.path.join(rel_src, name), dest)
         linked += 1
@@ -129,8 +132,8 @@ def main(argv=None):
     parser.add_argument("bundle", help="bundle file made by pack.py")
     parser.add_argument("-d", "--dir", default=".", help="output directory (default: .)")
     parser.add_argument("--force", action="store_true",
-                        help="remove the existing flowgen/ (top-level directories in the "
-                             "bundle) before unpacking; nothing else is removed")
+                        help="remove the existing flowgen/ and examples/ before unpacking; "
+                             "common_files/ and everything else is kept")
     parser.add_argument("--list", action="store_true", help="only list the files")
     args = parser.parse_args(argv)
 
@@ -145,7 +148,8 @@ def main(argv=None):
         return 0
 
     # Top-level directories (flowgen) this bundle owns.
-    tops = sorted(set(p.split("/")[0] for p, _, _ in files if "/" in p))
+    tops = sorted(set(p.split("/")[0] for p, _, _ in files
+                      if "/" in p and p.split("/")[0] not in SHARED_DIRS))
     existing = [t for t in tops if os.path.lexists(os.path.join(args.dir, t))]
     if existing and not args.force:
         sys.exit("unpack: ERROR: already exists in %s: %s\n"

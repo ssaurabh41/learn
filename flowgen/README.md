@@ -35,7 +35,7 @@ The log goes to `rtl2syn/logs/rtl2syn.log`, the reports to `rtl2syn/reports/`, a
 
 ## Config
 
-The config is plain Tcl. Start from `configs/block_template.config.tcl`, which explains every setting with examples. The usual name is `block.config.tcl`, but any name works.
+Configs are named `<block_name>.config.tcl` and live in `common_files/`. The easy way to make one is the spreadsheet: copy `common_files/block_template.config.csv` to `<block>.config.csv`, edit it in LibreOffice, and run `common_files/csv2config.py <block>.config.csv`. You can also edit the `.tcl` directly; it is plain Tcl.
 
 - Single values go in double quotes: `set TOP_DESIGN "block"`.
 - Lists go in braces, one double-quoted item per line. flowgen expands `$VARIABLES` inside list items.
@@ -46,7 +46,11 @@ The config is plain Tcl. Start from `configs/block_template.config.tcl`, which e
 - Helper variables such as `PROJ_ROOT` are optional; flowgen never needs them. A name found in several directories uses the first one, with a warning. A file listed twice is read once.
 - Misspelled setting names and missing files produce warnings. Errors are all reported together, and nothing is generated if there are any.
 
-Block configs live in the top-level `common_files/` directory. `unpack.py` creates `flowgen/configs/` with a link to each file in `common_files/`; re-run it with `--force` after adding a config. `common_files/` holds your golden configs on your own machine: it is never packed into `bundle.txt`, and `unpack.py` never touches it.
+`unpack.py` creates `flowgen/configs/` with a link to each `*.config.tcl` in `common_files/` (the template included); re-run it with `--force` after adding a config. In `common_files/`, `unpack.py` only writes the shipped templates and `csv2config.py`; your own configs are never removed or changed.
+
+## Regression
+
+`examples/` holds a small placeholder design that the template config points to. `examples/run_regression.csh` checks that the CSV template converts to the shipped `.tcl` template, that flowgen runs on it with no warnings, and that the run directory is complete.
 
 | Setting | Required | Meaning |
 |---|---|---|

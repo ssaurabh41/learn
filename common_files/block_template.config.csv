@@ -1,0 +1,33 @@
+Setting,Value,Required,Description,Example
+# HOW TO EDIT,,,"One value per row. For a list, add more rows below with the same Setting name (or leave the Setting cell empty). Rows whose Setting starts with # are headings. Leave Value empty if a setting is not used. Relative paths are relative to the common_files directory. LibreOffice: when opening, set the Value column type to Text so values like 4:0:0 are not changed. Then run: csv2config.py <block>.config.csv",
+# YOUR OWN VARIABLES,,,Optional helper variables (e.g. a path you use many times). Add rows here and use them below as $NAME. flowgen does not need any of them.,
+USER_RTL_DIR,,,Example helper variable. Leave empty if not used.,/proj/chip/block/rtl
+# DESIGN,,,,
+TOP_DESIGN,block,yes,Top-level design (module) name.,block
+FLOWS,rtl2syn,,"Flows to generate, one row each. Default: rtl2syn (RTL vs synthesized netlist).",rtl2syn
+# RTL,,,,
+RTL_FORMAT,sverilog,,"RTL language: sverilog (default), verilog or vhdl.",sverilog
+RTL_SEARCH_DIRS,../examples/rtl,,"Directories searched, in order, for RTL file names given without a full path (in RTL_FILES and inside .f files). One row per directory.",$USER_RTL_DIR
+RTL_FILES,source.f,yes,"RTL files or .f file lists, one row each. A .f file has one file per line; // and # start comments; $NAME uses config variables, then environment variables.",block.sv
+RTL_INCDIRS,../examples/rtl/include,,"Include directories for `include files, one row each. Also searched for RTL file names after RTL_SEARCH_DIRS. Not for vhdl.",$USER_RTL_DIR/include
+RTL_DEFINES,,,"Verilog macros, NAME or NAME=VALUE, one row each. Not for vhdl.",SYNTHESIS
+# NETLISTS,,,,
+SYN_SEARCH_DIRS,../examples/syn,,"Directories searched, in order, for netlist file names given without a full path. One row per directory.",/proj/chip/block/syn/outputs
+SYN_FILES,block.syn.v,yes (rtl2syn),"Synthesized netlist files or .f file lists, one row each.",block.syn.v
+APR_FILES,,,Place-and-route netlist files or .f file lists. Not used by rtl2syn.,/proj/chip/block/apr/outputs/block.apr.v
+# GUIDANCE AND CONSTRAINTS,,,,
+SVF_FILE,../examples/syn/block.svf,,SVF guidance file from synthesis. Recommended for Formality.,/proj/chip/block/syn/outputs/block.svf
+SDC_FILES,,,"Timing constraint files, one row each. Not used by Formality.",/proj/chip/block/constraints/block.sdc
+UPF_FILES,,,"Power intent files, one row each. Not used by flowgen yet.",/proj/chip/block/upf/block.upf
+# LIBRARIES,,,,
+LIB_FORMAT,db,,"Library file format: db (default, read_db) or lib (.lib or .lib.gz, read_lib).",db
+LIB_FILES,../examples/lib/stdcell_tt.db,yes,"Library files (standard cells, memories, hard IPs), one row each. Only these exact files are read.",/pdk/stdcell/db/stdcell_tt_0p80v_25c.db
+SIM_FILES,,,"Verilog models for hard IPs or cells without a library model, one row each. Read into both reference and implementation. Can be .f lists.",/ip/pll/verilog/pll_top.v
+BLACKBOX_MODULES,,,"Modules to black box, one row each. Nothing is black boxed unless listed here.",pll_top
+# TOOL SETTINGS,,,Keyed by tool name. Formality is formality. Empty values are left out.,
+TOOL_CMD(formality),,,Command that starts Formality. Default: fm_shell,/tools/synopsys/fm/bin/fm_shell
+"TOOL_SETTINGS(formality,hdlin_unresolved_modules)",,,"Any Formality variable: TOOL_SETTINGS(formality,<variable>). Written as set_app_var. Add one row per variable. synopsys_auto_setup is true unless set here.",black_box
+"TOOL_HOOKS(formality,pre_match)",,,"Your own Tcl file sourced in the Formality script. Hook points: setup, pre_match, pre_verify, post_verify.",/proj/chip/block/fm/constants.tcl
+# RUN ENVIRONMENT,,,Written into the run_<flow>.csh scripts.,
+ENV_SOURCE,../examples/env/setup.cshrc,,"Shell setup files to source, in order, one row each.",/tools/synopsys/setup.cshrc
+ENV_SETENV(SNPSLMD_LICENSE_FILE),27020@lic-server1,,Environment variable to set: ENV_SETENV(<NAME>). One row per variable.,27020@lic-server1

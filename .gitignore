@@ -1,3 +1,4 @@
 # Generated flowgen run directories (local output, never packed)
 runs/
 *_formality/
+examples/regression_out/

@@ -35,7 +35,7 @@ Config:
     written in double quotes, lists in braces with one double-quoted item
     per line; $VARIABLES inside list items are expanded by flowgen.
     Relative paths are relative to the config file's real directory.
-    See configs/block_template.config.tcl for every supported setting.
+    See common_files/block_template.config.csv (or .tcl) for every setting.
 
 Requires Python 3.6+ built with tkinter. Standard library only.
 """

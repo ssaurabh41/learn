@@ -1,10 +1,538 @@
 #@@PACK 3
-#@@FILE .gitignore mode=644 enc=text lines=3 eol=1 md5=a4ca20dd2cc1d4491cc7c5369497280b
+#@@FILE .gitignore mode=644 enc=text lines=4 eol=1 md5=d825745253313066d77899b57518d4e0
 # Generated flowgen run directories (local output, never packed)
 runs/
 *_formality/
+examples/regression_out/
 #@@END .gitignore
-#@@FILE flowgen/README.md mode=644 enc=text lines=72 eol=1 md5=041922c2daa59ce78dcbd19e90f2cbf2
+#@@FILE common_files/README.md mode=644 enc=text lines=29 eol=1 md5=557d6206db6618746a51255b3867c0d6
+# common_files
+
+Your golden block configs, named `<block_name>.config.tcl`, plus the tools
+to make them. On your machine this directory is the source of truth:
+`unpack.py` only writes the shipped files below and never removes or
+changes anything else here. Every `*.config.tcl` here is linked into
+`flowgen/configs/`.
+
+Shipped files:
+
+- `block_template.config.csv`  spreadsheet template; every setting, documented
+- `block_template.config.tcl`  the same template as a config (made from the CSV)
+- `csv2config.py`              turns `<block>.config.csv` into `<block>.config.tcl`
+
+New block:
+
+```
+cp block_template.config.csv myblock.config.csv
+```
+
+Edit `myblock.config.csv` in LibreOffice (when opening, set the Value
+column to Text; save as CSV), then:
+
+```
+./csv2config.py myblock.config.csv
+```
+
+This writes `myblock.config.tcl`. It will not overwrite an existing file
+unless you add `--force`.
+#@@END common_files/README.md
+#@@FILE common_files/block_template.config.csv mode=644 enc=text lines=33 eol=1 md5=13c22c6c4845c87fa2ce9e5184df49da
+Setting,Value,Required,Description,Example
+# HOW TO EDIT,,,"One value per row. For a list, add more rows below with the same Setting name (or leave the Setting cell empty). Rows whose Setting starts with # are headings. Leave Value empty if a setting is not used. Relative paths are relative to the common_files directory. LibreOffice: when opening, set the Value column type to Text so values like 4:0:0 are not changed. Then run: csv2config.py <block>.config.csv",
+# YOUR OWN VARIABLES,,,Optional helper variables (e.g. a path you use many times). Add rows here and use them below as $NAME. flowgen does not need any of them.,
+USER_RTL_DIR,,,Example helper variable. Leave empty if not used.,/proj/chip/block/rtl
+# DESIGN,,,,
+TOP_DESIGN,block,yes,Top-level design (module) name.,block
+FLOWS,rtl2syn,,"Flows to generate, one row each. Default: rtl2syn (RTL vs synthesized netlist).",rtl2syn
+# RTL,,,,
+RTL_FORMAT,sverilog,,"RTL language: sverilog (default), verilog or vhdl.",sverilog
+RTL_SEARCH_DIRS,../examples/rtl,,"Directories searched, in order, for RTL file names given without a full path (in RTL_FILES and inside .f files). One row per directory.",$USER_RTL_DIR
+RTL_FILES,source.f,yes,"RTL files or .f file lists, one row each. A .f file has one file per line; // and # start comments; $NAME uses config variables, then environment variables.",block.sv
+RTL_INCDIRS,../examples/rtl/include,,"Include directories for `include files, one row each. Also searched for RTL file names after RTL_SEARCH_DIRS. Not for vhdl.",$USER_RTL_DIR/include
+RTL_DEFINES,,,"Verilog macros, NAME or NAME=VALUE, one row each. Not for vhdl.",SYNTHESIS
+# NETLISTS,,,,
+SYN_SEARCH_DIRS,../examples/syn,,"Directories searched, in order, for netlist file names given without a full path. One row per directory.",/proj/chip/block/syn/outputs
+SYN_FILES,block.syn.v,yes (rtl2syn),"Synthesized netlist files or .f file lists, one row each.",block.syn.v
+APR_FILES,,,Place-and-route netlist files or .f file lists. Not used by rtl2syn.,/proj/chip/block/apr/outputs/block.apr.v
+# GUIDANCE AND CONSTRAINTS,,,,
+SVF_FILE,../examples/syn/block.svf,,SVF guidance file from synthesis. Recommended for Formality.,/proj/chip/block/syn/outputs/block.svf
+SDC_FILES,,,"Timing constraint files, one row each. Not used by Formality.",/proj/chip/block/constraints/block.sdc
+UPF_FILES,,,"Power intent files, one row each. Not used by flowgen yet.",/proj/chip/block/upf/block.upf
+# LIBRARIES,,,,
+LIB_FORMAT,db,,"Library file format: db (default, read_db) or lib (.lib or .lib.gz, read_lib).",db
+LIB_FILES,../examples/lib/stdcell_tt.db,yes,"Library files (standard cells, memories, hard IPs), one row each. Only these exact files are read.",/pdk/stdcell/db/stdcell_tt_0p80v_25c.db
+SIM_FILES,,,"Verilog models for hard IPs or cells without a library model, one row each. Read into both reference and implementation. Can be .f lists.",/ip/pll/verilog/pll_top.v
+BLACKBOX_MODULES,,,"Modules to black box, one row each. Nothing is black boxed unless listed here.",pll_top
+# TOOL SETTINGS,,,Keyed by tool name. Formality is formality. Empty values are left out.,
+TOOL_CMD(formality),,,Command that starts Formality. Default: fm_shell,/tools/synopsys/fm/bin/fm_shell
+"TOOL_SETTINGS(formality,hdlin_unresolved_modules)",,,"Any Formality variable: TOOL_SETTINGS(formality,<variable>). Written as set_app_var. Add one row per variable. synopsys_auto_setup is true unless set here.",black_box
+"TOOL_HOOKS(formality,pre_match)",,,"Your own Tcl file sourced in the Formality script. Hook points: setup, pre_match, pre_verify, post_verify.",/proj/chip/block/fm/constants.tcl
+# RUN ENVIRONMENT,,,Written into the run_<flow>.csh scripts.,
+ENV_SOURCE,../examples/env/setup.cshrc,,"Shell setup files to source, in order, one row each.",/tools/synopsys/setup.cshrc
+ENV_SETENV(SNPSLMD_LICENSE_FILE),27020@lic-server1,,Environment variable to set: ENV_SETENV(<NAME>). One row per variable.,27020@lic-server1
+#@@END common_files/block_template.config.csv
+#@@FILE common_files/block_template.config.tcl mode=644 enc=text lines=101 eol=1 md5=d1d940914d694c2286f1be0a26f11bac
+# From block_template.config.csv. Edit the CSV and rerun csv2config.py.
+
+# YOUR OWN VARIABLES
+
+# Example helper variable. Leave empty if not used.
+set USER_RTL_DIR ""
+
+# DESIGN
+
+# Top-level design (module) name.
+set TOP_DESIGN "block"
+
+# Flows to generate, one row each. Default: rtl2syn (RTL vs synthesized
+# netlist).
+set FLOWS {
+  "rtl2syn"
+}
+
+# RTL
+
+# RTL language: sverilog (default), verilog or vhdl.
+set RTL_FORMAT "sverilog"
+
+# Directories searched, in order, for RTL file names given without a full
+# path (in RTL_FILES and inside .f files). One row per directory.
+set RTL_SEARCH_DIRS {
+  "../examples/rtl"
+}
+
+# RTL files or .f file lists, one row each. A .f file has one file per line;
+# // and # start comments; $NAME uses config variables, then environment
+# variables.
+set RTL_FILES {
+  "source.f"
+}
+
+# Include directories for `include files, one row each. Also searched for
+# RTL file names after RTL_SEARCH_DIRS. Not for vhdl.
+set RTL_INCDIRS {
+  "../examples/rtl/include"
+}
+
+# Verilog macros, NAME or NAME=VALUE, one row each. Not for vhdl.
+set RTL_DEFINES {}
+
+# NETLISTS
+
+# Directories searched, in order, for netlist file names given without a
+# full path. One row per directory.
+set SYN_SEARCH_DIRS {
+  "../examples/syn"
+}
+
+# Synthesized netlist files or .f file lists, one row each.
+set SYN_FILES {
+  "block.syn.v"
+}
+
+# Place-and-route netlist files or .f file lists. Not used by rtl2syn.
+set APR_FILES {}
+
+# GUIDANCE AND CONSTRAINTS
+
+# SVF guidance file from synthesis. Recommended for Formality.
+set SVF_FILE "../examples/syn/block.svf"
+
+# Timing constraint files, one row each. Not used by Formality.
+set SDC_FILES {}
+
+# Power intent files, one row each. Not used by flowgen yet.
+set UPF_FILES {}
+
+# LIBRARIES
+
+# Library file format: db (default, read_db) or lib (.lib or .lib.gz,
+# read_lib).
+set LIB_FORMAT "db"
+
+# Library files (standard cells, memories, hard IPs), one row each. Only
+# these exact files are read.
+set LIB_FILES {
+  "../examples/lib/stdcell_tt.db"
+}
+
+# Verilog models for hard IPs or cells without a library model, one row
+# each. Read into both reference and implementation. Can be .f lists.
+set SIM_FILES {}
+
+# Modules to black box, one row each. Nothing is black boxed unless listed
+# here.
+set BLACKBOX_MODULES {}
+
+# RUN ENVIRONMENT
+
+# Shell setup files to source, in order, one row each.
+set ENV_SOURCE {
+  "../examples/env/setup.cshrc"
+}
+
+# Environment variable to set: ENV_SETENV(<NAME>). One row per variable.
+set ENV_SETENV(SNPSLMD_LICENSE_FILE) "27020@lic-server1"
+#@@END common_files/block_template.config.tcl
+#@@FILE common_files/csv2config.py mode=755 enc=text lines=194 eol=1 md5=901bb4624eb2036373aaf266b8ade7f1
+#!/usr/bin/env python3
+"""csv2config - turn a block config CSV into a block config Tcl file.
+
+Usage:
+    csv2config.py [--force] [-o OUTPUT] CSV
+
+Arguments:
+    CSV       The block config spreadsheet, named <block_name>.config.csv.
+              Start from block_template.config.csv and edit it in
+              LibreOffice (keep it as CSV when saving).
+    -o        Output file. Default: the CSV name with .csv replaced by
+              .tcl, next to the CSV (block.config.csv -> block.config.tcl).
+    --force   Overwrite the output file if it already exists.
+    -h        Show this help and exit.
+
+Example:
+    csv2config.py block.config.csv
+    flowgen.py configs/block.config.tcl
+
+CSV columns: Setting, Value, Required, Description, Example.
+  - One value per row. For a list, add more rows with the same Setting
+    (or an empty Setting cell); they are collected in order.
+  - A Setting starting with # is a heading.
+  - Empty Value means not used. Empty TOOL_*/ENV_SETENV entries are left out.
+  - Description becomes a comment above the setting. Required and Example
+    are for the reader only.
+  - Settings flowgen does not know are written as your own helper
+    variables, so you can use them as $NAME in other values.
+
+Python 3.6+, standard library only.
+"""
+
+import argparse
+import csv
+import os
+import re
+import sys
+import textwrap
+
+# Settings that are lists in the config (one CSV row per item).
+LIST_SETTINGS = (
+    "FLOWS", "RTL_SEARCH_DIRS", "RTL_FILES", "RTL_INCDIRS", "RTL_DEFINES",
+    "SYN_SEARCH_DIRS", "SYN_FILES", "APR_FILES", "SDC_FILES", "UPF_FILES",
+    "LIB_FILES", "SIM_FILES", "BLACKBOX_MODULES", "ENV_SOURCE",
+)
+NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\([^()\s]+\))?$")
+COLUMNS = ("setting", "value", "required", "description", "example")
+
+
+class CsvError(Exception):
+    pass
+
+
+def tcl_quote(text):
+    """Text in double quotes for Tcl. $NAME stays live (variables expand);
+    characters Tcl would treat specially otherwise are escaped."""
+    for ch in ("\\", '"', "[", "]"):
+        text = text.replace(ch, "\\" + ch)
+    return '"%s"' % text
+
+
+def read_rows(path):
+    """Rows as dicts with the COLUMNS keys, plus the CSV line number."""
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+    except (IOError, OSError) as exc:
+        raise CsvError("cannot read %s: %s" % (path, exc))
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise CsvError("%s is not UTF-8/ASCII text; save it as CSV with UTF-8" % path)
+    lines = text.splitlines(True)
+    if not lines:
+        raise CsvError("%s is empty" % path)
+    # LibreOffice may save with ; or tab instead of , depending on settings.
+    header = lines[0]
+    delimiter = max((",", ";", "\t"), key=header.count)
+    reader = csv.reader(lines, delimiter=delimiter)
+    head = [h.strip().lower() for h in next(reader)]
+    if head[:2] != ["setting", "value"]:
+        raise CsvError("%s: first row must be the header Setting, Value, ... (got %s)"
+                       % (path, ", ".join(head)))
+    rows = []
+    for lineno, cells in enumerate(reader, 2):
+        cells = [c.strip() for c in cells] + [""] * len(COLUMNS)
+        row = dict(zip(COLUMNS, cells))
+        row["line"] = lineno
+        rows.append(row)
+    return rows
+
+
+def collect(rows):
+    """Group rows into ordered entries: ('heading', title) or
+    ('setting', name, [values], description)."""
+    entries, by_name, current = [], {}, None
+    errors = []
+    for row in rows:
+        name, value = row["setting"], row["value"]
+        if not any(row[c] for c in COLUMNS):
+            continue
+        if name.startswith("#"):
+            entries.append(("heading", name.lstrip("#").strip()))
+            current = None
+            continue
+        if not name:
+            if not value:
+                continue
+            if current is None:
+                errors.append("line %d: value %r has no Setting above it" % (row["line"], value))
+                continue
+            name = current
+        if not NAME_RE.match(name):
+            errors.append("line %d: %r is not a valid setting name" % (row["line"], name))
+            continue
+        if name in by_name:
+            entry = by_name[name]
+            if name not in LIST_SETTINGS:
+                errors.append("line %d: %s is a single value but appears again "
+                              "(first on line %d)" % (row["line"], name, entry[4]))
+                continue
+        else:
+            entry = ["setting", name, [], row["description"], row["line"]]
+            by_name[name] = entry
+            entries.append(entry)
+        if value:
+            entry[2].append(value)
+        current = name
+    if errors:
+        raise CsvError("\n".join(errors))
+    return entries
+
+
+def render(entries, csv_name):
+    blocks, heading = [], None        # heading is written only if a setting follows
+    for entry in entries:
+        if entry[0] == "heading":
+            heading = entry[1]
+            continue
+        _, name, values, description, _ = entry
+        if "(" in name and not values:
+            continue                      # empty TOOL_*/ENV_SETENV rows are left out
+        lines = []
+        if heading is not None:
+            lines += ["", "# " + heading]
+            heading = None
+        lines.append("")
+        for para in description.splitlines():
+            lines += ["# " + l for l in textwrap.wrap(para, 74)]
+        if name in LIST_SETTINGS:
+            if values:
+                lines.append("set %s {" % name)
+                lines += ["  " + tcl_quote(v) for v in values]
+                lines.append("}")
+            else:
+                lines.append("set %s {}" % name)
+        else:
+            lines.append("set %s %s" % (name, tcl_quote(values[0] if values else "")))
+        blocks += lines
+    header = "# From %s. Edit the CSV and rerun csv2config.py." % csv_name
+    return "\n".join([header] + blocks) + "\n"
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("csv", metavar="CSV", help="block config CSV, <block_name>.config.csv")
+    parser.add_argument("-o", "--output", help="output .config.tcl file")
+    parser.add_argument("--force", action="store_true", help="overwrite an existing output file")
+    args = parser.parse_args(argv)
+
+    if not args.csv.endswith(".config.csv"):
+        print("csv2config: WARNING: config CSVs are named <block_name>.config.csv: %s" % args.csv)
+    output = args.output or (args.csv[:-len(".csv")] + ".tcl" if args.csv.endswith(".csv")
+                             else args.csv + ".tcl")
+    if os.path.exists(output) and not args.force:
+        sys.exit("csv2config: ERROR: %s already exists. Use --force to overwrite it." % output)
+
+    try:
+        entries = collect(read_rows(args.csv))
+    except CsvError as exc:
+        sys.exit("\n".join("csv2config: ERROR: " + l for l in str(exc).splitlines()))
+    text = render(entries, os.path.basename(args.csv))
+    if any(ord(c) > 127 for c in text):
+        print("csv2config: WARNING: non-ASCII characters in the CSV were copied to %s" % output)
+
+    with open(output, "w") as fh:
+        fh.write(text)
+    print("csv2config: wrote %s" % output)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+#@@END common_files/csv2config.py
+#@@FILE examples/README.md mode=644 enc=text lines=12 eol=1 md5=a16cd8e105814fc3e043de9458d557cd
+# examples
+
+Small placeholder design used by the template config
+(`common_files/block_template.config.tcl`) and by the regression test.
+The files only need to exist for flowgen; they are not a real library or
+a real synthesis result, so Formality itself will not pass on them.
+
+Run the regression:
+
+```
+examples/run_regression.csh
+```
+#@@END examples/README.md
+#@@FILE examples/env/setup.cshrc mode=644 enc=text lines=2 eol=1 md5=9aa6946994117cdc3734b82abee95867
+# Placeholder tool setup for the flowgen regression.
+# On a real system this sets PATH etc. for the Synopsys tools.
+#@@END examples/env/setup.cshrc
+#@@FILE examples/lib/stdcell_tt.db mode=644 enc=text lines=1 eol=1 md5=11c0989f5f33013bfa5a1d649566c67a
+Placeholder library for the flowgen regression. A real .db is a compiled Liberty library.
+#@@END examples/lib/stdcell_tt.db
+#@@FILE examples/rtl/block.sv mode=644 enc=text lines=15 eol=1 md5=e4c3b3f341fe68c721dbe8b392897c77
+// Example design for the flowgen regression: a register with enable.
+`include "block_defines.svh"
+
+module block
+  import block_pkg::*;
+(
+  input  logic             clk,
+  input  logic             en,
+  input  logic [WIDTH-1:0] d,
+  output logic [WIDTH-1:0] q
+);
+  always_ff @(posedge clk) begin
+    if (en) q <= d;
+  end
+endmodule
+#@@END examples/rtl/block.sv
+#@@FILE examples/rtl/block_pkg.sv mode=644 enc=text lines=4 eol=1 md5=5ce68f07a2be8f51620a03175074e52a
+// Example package for the flowgen regression design.
+package block_pkg;
+  localparam int WIDTH = `BLOCK_WIDTH;
+endpackage
+#@@END examples/rtl/block_pkg.sv
+#@@FILE examples/rtl/include/block_defines.svh mode=644 enc=text lines=2 eol=1 md5=0b4f2da2cab6ba2b3dcf10991a150dd8
+// Example include file for the flowgen regression design.
+`define BLOCK_WIDTH 4
+#@@END examples/rtl/include/block_defines.svh
+#@@FILE examples/rtl/source.f mode=644 enc=text lines=4 eol=1 md5=ba5cfec76be16dc51eb345433bad53ed
+// RTL file list for the example design.
+// File names only: they are found through RTL_SEARCH_DIRS.
+block_pkg.sv
+block.sv
+#@@END examples/rtl/source.f
+#@@FILE examples/run_regression.csh mode=755 enc=text lines=83 eol=1 md5=c38bb251304791f09fe43b5d8d8085e9
+#!/bin/tcsh -f
+# Regression test for flowgen, using the template config and the example
+# design in this directory. Usage: examples/run_regression.csh
+#
+# Checks:
+#   1. csv2config turns block_template.config.csv into exactly the shipped
+#      block_template.config.tcl
+#   2. flowgen runs on the template config with no warnings or errors
+#   3. the run directory has every expected file, and the run script parses
+# Output goes to examples/regression_out/ (removed at the start of each run).
+
+set here = "`dirname $0`"
+set root = "`cd $here/.. && pwd`"
+if ( "$root" == "" || ! -d "$root/flowgen" ) then
+  echo "regression: cannot find the repo root from $0"
+  exit 2
+endif
+set out = "$root/examples/regression_out"
+if ( -d "$out" ) rm -rf "$out"
+mkdir -p "$out"
+set fail = 0
+
+# 1. CSV template -> config template
+python3 "$root/common_files/csv2config.py" "$root/common_files/block_template.config.csv" \
+  -o "$out/block_template.config.tcl" > "$out/csv2config.log"
+if ( $status != 0 ) then
+  echo "FAIL csv2config (see $out/csv2config.log)"
+  set fail = 1
+else
+  cmp -s "$out/block_template.config.tcl" "$root/common_files/block_template.config.tcl"
+  if ( $status != 0 ) then
+    echo "FAIL block_template.config.tcl is out of date; regenerate it from the CSV:"
+    echo "     common_files/csv2config.py --force common_files/block_template.config.csv"
+    set fail = 1
+  else
+    echo "PASS csv2config"
+  endif
+endif
+
+# 2. flowgen on the template config
+cd "$out"
+python3 "$root/flowgen/flowgen.py" "$root/common_files/block_template.config.tcl" >& flowgen.log
+if ( $status != 0 ) then
+  echo "FAIL flowgen exited with an error (see $out/flowgen.log)"
+  set fail = 1
+else
+  grep -q -e "WARNING" -e "ERROR" flowgen.log
+  if ( $status == 0 ) then
+    echo "FAIL flowgen printed warnings (see $out/flowgen.log)"
+    set fail = 1
+  else
+    echo "PASS flowgen"
+  endif
+endif
+
+# 3. Run directory contents
+set rundir = "`ls -d $out/*_block_formality |& head -1`"
+set dirfail = 0
+foreach f ( run_rtl2syn.csh rtl2syn/rtl2syn.tcl rtl2syn/logs rtl2syn/reports block_template.config.tcl )
+  if ( ! -e "$rundir/$f" ) then
+    echo "FAIL missing $f in the run directory"
+    set dirfail = 1
+  endif
+end
+if ( -e "$rundir/run_rtl2syn.csh" ) then
+  tcsh -n "$rundir/run_rtl2syn.csh"
+  if ( $status != 0 ) then
+    echo "FAIL run_rtl2syn.csh does not parse"
+    set dirfail = 1
+  endif
+endif
+if ( $dirfail == 0 ) then
+  echo "PASS run directory"
+else
+  set fail = 1
+endif
+
+if ( $fail != 0 ) then
+  echo "regression: FAILED"
+  exit 1
+endif
+echo "regression: PASSED"
+exit 0
+#@@END examples/run_regression.csh
+#@@FILE examples/syn/block.svf mode=644 enc=text lines=1 eol=1 md5=869b26ca649d3ed28a1464fc8148a739
+# Placeholder SVF for the flowgen regression. A real SVF is written by synthesis.
+#@@END examples/syn/block.svf
+#@@FILE examples/syn/block.syn.v mode=644 enc=text lines=18 eol=1 md5=375512e614b0c41640fffe8de91d0c1a
+// Example synthesized netlist for the flowgen regression.
+// Cell names are placeholders; this is not a real library mapping.
+module block (clk, en, d, q);
+  input clk;
+  input en;
+  input [3:0] d;
+  output [3:0] q;
+  wire [3:0] n;
+
+  MUX2X1 u_mux0 (.A(q[0]), .B(d[0]), .S(en), .Y(n[0]));
+  MUX2X1 u_mux1 (.A(q[1]), .B(d[1]), .S(en), .Y(n[1]));
+  MUX2X1 u_mux2 (.A(q[2]), .B(d[2]), .S(en), .Y(n[2]));
+  MUX2X1 u_mux3 (.A(q[3]), .B(d[3]), .S(en), .Y(n[3]));
+  DFFQX1 u_q0 (.CK(clk), .D(n[0]), .Q(q[0]));
+  DFFQX1 u_q1 (.CK(clk), .D(n[1]), .Q(q[1]));
+  DFFQX1 u_q2 (.CK(clk), .D(n[2]), .Q(q[2]));
+  DFFQX1 u_q3 (.CK(clk), .D(n[3]), .Q(q[3]));
+endmodule
+#@@END examples/syn/block.syn.v
+#@@FILE flowgen/README.md mode=644 enc=text lines=76 eol=1 md5=6ce4b1717cfca1ed7fabbcdca97ca7e4
 # flowgen
 
 Generates EDA run directories from one Tcl block config. Python 3.6+ (with tkinter), standard library only.
@@ -42,7 +570,7 @@ The log goes to `rtl2syn/logs/rtl2syn.log`, the reports to `rtl2syn/reports/`, a
 
 ## Config
 
-The config is plain Tcl. Start from `configs/block_template.config.tcl`, which explains every setting with examples. The usual name is `block.config.tcl`, but any name works.
+Configs are named `<block_name>.config.tcl` and live in `common_files/`. The easy way to make one is the spreadsheet: copy `common_files/block_template.config.csv` to `<block>.config.csv`, edit it in LibreOffice, and run `common_files/csv2config.py <block>.config.csv`. You can also edit the `.tcl` directly; it is plain Tcl.
 
 - Single values go in double quotes: `set TOP_DESIGN "block"`.
 - Lists go in braces, one double-quoted item per line. flowgen expands `$VARIABLES` inside list items.
@@ -53,7 +581,11 @@ The config is plain Tcl. Start from `configs/block_template.config.tcl`, which e
 - Helper variables such as `PROJ_ROOT` are optional; flowgen never needs them. A name found in several directories uses the first one, with a warning. A file listed twice is read once.
 - Misspelled setting names and missing files produce warnings. Errors are all reported together, and nothing is generated if there are any.
 
-Block configs live in the top-level `common_files/` directory. `unpack.py` creates `flowgen/configs/` with a link to each file in `common_files/`; re-run it with `--force` after adding a config. `common_files/` holds your golden configs on your own machine: it is never packed into `bundle.txt`, and `unpack.py` never touches it.
+`unpack.py` creates `flowgen/configs/` with a link to each `*.config.tcl` in `common_files/` (the template included); re-run it with `--force` after adding a config. In `common_files/`, `unpack.py` only writes the shipped templates and `csv2config.py`; your own configs are never removed or changed.
+
+## Regression
+
+`examples/` holds a small placeholder design that the template config points to. `examples/run_regression.csh` checks that the CSV template converts to the shipped `.tcl` template, that flowgen runs on it with no warnings, and that the run directory is complete.
 
 | Setting | Required | Meaning |
 |---|---|---|
@@ -78,175 +610,7 @@ Block configs live in the top-level `common_files/` directory. `unpack.py` creat
 | `ENV_SOURCE` | | cshrc files sourced by the run script |
 | `ENV_SETENV(NAME)` | | environment variables set by the run script |
 #@@END flowgen/README.md
-#@@FILE flowgen/configs/block_template.config.tcl mode=644 enc=text lines=166 eol=1 md5=5f8e7febe55c0e15aa91c71cc00a4943
-# Block config template for flowgen.py
-# Copy it to common_files/block.config.tcl and edit the values.
-#
-# Single value:
-# set NAME "value"
-#
-# List, one item per line:
-# set NAME {
-#   "item1"
-#   "item2"
-# }
-#
-# "" or {} means not used. $VARIABLES work inside values and lists.
-# Relative paths are relative to this file's directory (common_files/).
-
-
-# Optional helper variables for your own paths. flowgen does not need or
-# read them; use them in values, lists and .f files as $NAME.
-# Example:
-# set PROJ_ROOT "/proj/chip"
-# set USER_RTL_DIR "/proj/chip/block/rtl"
-
-# Top-level design (module) name. Required.
-set TOP_DESIGN "block"
-
-# Flows to generate. Default: rtl2syn (RTL vs synthesized netlist).
-set FLOWS {
-  "rtl2syn"
-}
-
-
-# RTL
-
-# RTL language: "sverilog" (default), "verilog" or "vhdl".
-set RTL_FORMAT "sverilog"
-
-# Directories searched, in order, for RTL files given without a full path,
-# in RTL_FILES and inside .f file lists. RTL_INCDIRS are searched next.
-set RTL_SEARCH_DIRS {
-  "/proj/chip/block/rtl"
-}
-
-# RTL files or .f file lists. Required.
-# A .f file has one file per line; // and # start comments; $NAME uses
-# config variables, then environment variables.
-# Example with files instead of a file list:
-# set RTL_FILES {
-#   "block_pkg.sv"
-#   "block.sv"
-# }
-set RTL_FILES {
-  "source.f"
-}
-
-# Include directories for `include files. Also searched for RTL file names
-# after RTL_SEARCH_DIRS. Not for vhdl.
-# Example:
-# set RTL_INCDIRS {
-#   "/proj/chip/block/rtl/include"
-# }
-set RTL_INCDIRS {}
-
-# Verilog macros, as NAME or NAME=VALUE. Not for vhdl.
-# Example:
-# set RTL_DEFINES {
-#   "SYNTHESIS"
-#   "DATA_WIDTH=32"
-# }
-set RTL_DEFINES {}
-
-
-# NETLISTS
-
-# Directories searched, in order, for netlist files given without a full
-# path, in SYN_FILES and inside .f file lists.
-set SYN_SEARCH_DIRS {
-  "/proj/chip/block/syn/outputs"
-}
-
-# Synthesized netlist files or .f file lists. Required for rtl2syn.
-set SYN_FILES {
-  "block.syn.v"
-}
-
-# Place-and-route netlist files or .f file lists. Not used by rtl2syn.
-# Example:
-# set APR_FILES {
-#   "/proj/chip/block/apr/outputs/block.apr.v"
-# }
-set APR_FILES {}
-
-
-# GUIDANCE AND CONSTRAINTS
-
-# SVF guidance file from synthesis. Recommended for Formality.
-set SVF_FILE "/proj/chip/block/syn/outputs/block.svf"
-
-# Timing constraint files. Not used by Formality.
-# Example:
-# set SDC_FILES {
-#   "/proj/chip/block/constraints/block.sdc"
-# }
-set SDC_FILES {}
-
-# Power intent files. Not used by flowgen yet.
-# Example:
-# set UPF_FILES {
-#   "/proj/chip/block/upf/block.upf"
-# }
-set UPF_FILES {}
-
-
-# LIBRARIES
-
-# Library file format: "db" (default, read_db) or "lib" (.lib or .lib.gz, read_lib).
-set LIB_FORMAT "db"
-
-# Library files: standard cells, memories, hard IPs. Required.
-# Only these exact files are read.
-set LIB_FILES {
-  "/pdk/stdcell/db/stdcell_tt_0p80v_25c.db"
-}
-
-# Verilog models for hard IPs or cells without a library model.
-# Read into both reference and implementation. Items can be .f lists.
-# Example:
-# set SIM_FILES {
-#   "/ip/pll/verilog/pll_top.v"
-# }
-set SIM_FILES {}
-
-# Modules to black box. Nothing is black boxed unless listed here.
-# Example:
-# set BLACKBOX_MODULES {
-#   "pll_top"
-# }
-set BLACKBOX_MODULES {}
-
-
-# TOOL SETTINGS
-# Keyed by tool name. Formality is "formality".
-
-# Command that starts the tool. Default: fm_shell
-# Example:
-# set TOOL_CMD(formality) "/tools/synopsys/fm/bin/fm_shell"
-
-# Tool variables, written as set_app_var. Add one line per variable.
-# synopsys_auto_setup is "true" unless set here.
-# Example:
-# set TOOL_SETTINGS(formality,hdlin_unresolved_modules) "black_box"
-
-# Your own Tcl files, sourced at: setup, pre_match, pre_verify, post_verify.
-# Example:
-# set TOOL_HOOKS(formality,pre_match) "/proj/chip/block/fm/constants.tcl"
-
-
-# RUN ENVIRONMENT
-# Written into the run_<flow>.csh scripts.
-
-# Shell setup files to source, in order.
-set ENV_SOURCE {
-  "/tools/synopsys/setup.cshrc"
-}
-
-# Environment variables to set, one line each.
-set ENV_SETENV(SNPSLMD_LICENSE_FILE) "27020@lic-server1"
-#@@END flowgen/configs/block_template.config.tcl
-#@@FILE flowgen/flowgen.py mode=755 enc=text lines=669 eol=1 md5=201e34ba297aca3343988c9faa13d9db
+#@@FILE flowgen/flowgen.py mode=755 enc=text lines=669 eol=1 md5=65eb2a8244674b8138360049dc1d3cf8
 #!/usr/bin/env python3
 """flowgen - generate EDA run directories from a Tcl block config.
 
@@ -284,7 +648,7 @@ Config:
     written in double quotes, lists in braces with one double-quoted item
     per line; $VARIABLES inside list items are expanded by flowgen.
     Relative paths are relative to the config file's real directory.
-    See configs/block_template.config.tcl for every supported setting.
+    See common_files/block_template.config.csv (or .tcl) for every setting.
 
 Requires Python 3.6+ built with tkinter. Standard library only.
 """
@@ -927,7 +1291,7 @@ set here = "`dirname $0`"
 python3 "$here/flowgen.py" $argv:q
 exit $status
 #@@END flowgen/runflowgen.sh
-#@@FILE pack.py mode=755 enc=text lines=115 eol=1 md5=789fd890236ce36dd4ca5ea01f8edac3
+#@@FILE pack.py mode=755 enc=text lines=116 eol=1 md5=225d68c2d2b5b5d6d5eaee151f810399
 #!/usr/bin/env python3
 """pack - concatenate a repo's files into one plain-text bundle.
 
@@ -937,8 +1301,9 @@ Usage:
 ROOT defaults to the git repo containing the current directory (or the
 current directory if not in git). In a git repo only tracked files are
 packed; otherwise every file under ROOT except .git/ is packed. Paths
-under EXCLUDE_DIRS are never packed: docs/, and common_files/ (the
-golden block configs live only on the user's machine).
+under EXCLUDE_DIRS (docs/) are never packed. The repo's common_files/ holds
+only the shipped tool files (templates, csv2config.py); the user's own block
+configs live only on their machine and are never in git.
 
 The bundle is pure ASCII, so it survives copy/paste, downloads and CRLF
 line endings. Pure-ASCII text files are stored as readable lines; any other
@@ -961,7 +1326,7 @@ import os
 import subprocess
 import sys
 
-EXCLUDE_DIRS = ("docs/", "common_files/")   # top-level directories never packed
+EXCLUDE_DIRS = ("docs/",)   # top-level directories never packed
 
 
 def repo_root():
@@ -1044,7 +1409,7 @@ def main(argv=None):
 if __name__ == "__main__":
     sys.exit(main())
 #@@END pack.py
-#@@FILE session.md mode=644 enc=text lines=231 eol=1 md5=b123fbbbbdafd2253e6e5e41a877b7fe
+#@@FILE session.md mode=644 enc=text lines=268 eol=1 md5=d86fb8d28f70e889f5c1a890265fcd48
 # Session handoff: flowgen (EDA flow generator)
 
 Paste this file into a new Claude Code session (or keep it in the repo root)
@@ -1090,26 +1455,33 @@ bundle.txt                 all packed files (copy this to the workstation)
 pack.py                    packs git-tracked files into bundle.txt
 unpack.py                  recreates files from bundle.txt
 session.md                 this file
-common_files/              golden block configs (LOCAL ONLY, never packed;
-                           repo copy holds only a README)
+common_files/              shared with the user's golden configs
+  README.md
+  block_template.config.csv   spreadsheet template, every setting documented
+  block_template.config.tcl   same template as Tcl (generated from the CSV)
+  csv2config.py               <block>.config.csv -> <block>.config.tcl
+examples/                  placeholder design for the template + regression
+  rtl/ (block_pkg.sv, block.sv, source.f, include/block_defines.svh)
+  syn/ (block.syn.v, block.svf)   lib/stdcell_tt.db   env/setup.cshrc
+  run_regression.csh
 flowgen/
   flowgen.py               the generator
   runflowgen.sh            tcsh wrapper: runs flowgen.py with python3
   README.md
-  configs/
-    block_template.config.tcl   template listing every setting
 docs/                      unrelated older docs (excluded from pack)
 ```
 
-On the workstation, after unpacking, flowgen/configs/ also holds one
-symlink per file in the local common_files/:
+Config files are named <block_name>.config.tcl and live in common_files/.
+On the workstation, unpack creates flowgen/configs/ with one symlink per
+common_files/*.config.tcl (template included):
 `flowgen/configs/<name> -> ../../common_files/<name>`
 
 ## pack.py / unpack.py
 
 - `python3 pack.py [-o BUNDLE] [ROOT]`, default output bundle.txt.
 - Packs only git-tracked files (so `git add` new files BEFORE packing).
-  Excludes docs/ and common_files/ (EXCLUDE_DIRS).
+  Excludes docs/ (EXCLUDE_DIRS). The repo's common_files/ holds only the
+  shipped tool files; user configs are never in git.
 - Bundle format 3 (`#@@PACK 3`), pure ASCII. Each file has a header
   `#@@FILE <path> mode=<octal> enc=<text|b64> lines=<n> eol=<0|1> md5=<hex>`,
   its lines, then `#@@END <path>`. Pure-ASCII text files are stored as
@@ -1118,15 +1490,44 @@ symlink per file in the local common_files/:
   in transit: byte 0xbf at offset 114).
 - `python3 unpack.py BUNDLE [-d DIR] [--force] [--list]`
   - Validates the whole bundle (MD5 per file) before writing anything.
-  - If flowgen/ already exists: error without --force. With --force it
-    removes flowgen/ only, then recreates it. Nothing outside flowgen/ is
-    removed; common_files/ is never touched. Top-level files (pack.py,
-    unpack.py) are simply overwritten.
-  - Then creates flowgen/configs/ links to each file in DIR/common_files/
-    (skips dotfiles, subdirectories, and names already present such as
-    the template). Warns if common_files/ is missing.
+  - Owned dirs flowgen/ and examples/: error if they exist, unless
+    --force, which removes and recreates them.
+  - Shared dir common_files/: bundle files (templates, csv2config.py,
+    README) are written/overwritten; nothing else there is removed or
+    changed. User configs are never touched.
+  - Top-level files (pack.py, unpack.py, session.md, .gitignore) are
+    overwritten.
+  - Then links every DIR/common_files/*.config.tcl into flowgen/configs/.
+    Warns if common_files/ is missing.
   - Only `--force` (double dash) is accepted.
 - Regenerate the bundle after every change and commit it.
+
+## csv2config.py (common_files/)
+
+- `csv2config.py [--force] [-o OUTPUT] <block>.config.csv` writes
+  <block>.config.tcl next to the CSV. Refuses to overwrite unless --force.
+  The CSV is the master once used; the .tcl starts with
+  "# From <csv>. Edit the CSV and rerun csv2config.py."
+- CSV columns: Setting, Value, Required, Description, Example. Delimiter
+  , ; or tab (auto); UTF-8 with or without BOM.
+- One value per row; list settings (LIST_SETTINGS in csv2config.py) take
+  more rows with the same Setting or an empty Setting cell. A single-value
+  setting repeated is an error. "# ..." rows are headings (written only if
+  a setting follows). Empty TOOL_*/ENV_SETENV array rows are left out.
+  Unknown names become helper variables (usable as $NAME).
+- Values are written in double quotes with \ " [ ] escaped; $NAME stays live.
+- LibreOffice 6.4: set the Value column type to Text when opening.
+- LIST_SETTINGS duplicates flowgen's knowledge of list settings (known smell).
+
+## Regression
+
+`examples/run_regression.csh` (tcsh, python3 with tkinter on PATH):
+1. csv2config on block_template.config.csv must reproduce
+   common_files/block_template.config.tcl exactly
+2. flowgen on the template config must print no WARNING/ERROR
+3. run directory must contain run_rtl2syn.csh, rtl2syn/rtl2syn.tcl,
+   rtl2syn/logs, rtl2syn/reports, the config copy; run script parses.
+Output in examples/regression_out/ (gitignored). Run it after every change.
 
 ## flowgen.py
 
@@ -1197,8 +1598,9 @@ How it works:
     "/tools/setup.cshrc"
   }
   ```
-- Helper variables (PROJ_ROOT, USER_RTL_DIR, ...) are optional and only
-  shown commented out in the template; flowgen never depends on them.
+- Helper variables (PROJ_ROOT, USER_RTL_DIR, ...) are optional; flowgen
+  never depends on them. The template's paths are relative
+  (../examples/...) so it runs as-is from common_files/.
 - Design name in examples: "block".
 
 Settings:
@@ -1277,25 +1679,28 @@ The Synopsys manuals are behind SolvNet; these are best-knowledge forms:
 - Branch: claude/chat-session-8t1llt on github.com/ssaurabh41/learn.
 - Commit after each change, regenerate bundle.txt, push.
 #@@END session.md
-#@@FILE unpack.py mode=755 enc=text lines=176 eol=1 md5=d46a333114c99e7d7d9f45e80a478130
+#@@FILE unpack.py mode=755 enc=text lines=180 eol=1 md5=051674f36e1fac7f70784d58e3af084e
 #!/usr/bin/env python3
 """unpack - recreate files from a bundle made by pack.py.
 
 Usage:
     unpack.py BUNDLE [-d DIR] [--force] [--list]
 
-Files are written under DIR (default: current directory). Then the
-directory flowgen/configs/ (which holds block_template.config.tcl from the
-bundle) gets one link per file in your local DIR/common_files/ (the golden
-block configs):
+Files are written under DIR (default: current directory). Then
+flowgen/configs/ gets one link per config file (*.config.tcl) in your local
+DIR/common_files/, the template included:
     flowgen/configs/<name> -> ../../common_files/<name>
 Re-run unpack (with --force) to pick up configs added to common_files/ later.
 
-If a top-level directory from the bundle (flowgen/) already exists in DIR,
-unpack stops with an error and changes nothing. With --force that directory
-is removed first and recreated from the bundle, so no stale files are left
-behind. Nothing else in DIR is removed: common_files/ is never in a bundle
-and is never touched. Top-level files (pack.py, unpack.py) are overwritten.
+If a top-level directory from the bundle (flowgen/, examples/) already
+exists in DIR, unpack stops with an error and changes nothing. With --force
+those directories are removed first and recreated from the bundle, so no
+stale files are left behind.
+
+common_files/ is shared with you: the bundle's files there (the templates
+and csv2config.py) are written or overwritten, and nothing else in it is
+removed or changed. Your own block configs are never touched. Top-level
+files (pack.py, unpack.py, ...) are overwritten.
 
 Every file is checked against its MD5 before anything is written; a damaged
 bundle writes nothing.
@@ -1312,7 +1717,8 @@ import re
 import shutil
 import sys
 
-CONFIG_SRC = "common_files"          # local golden configs (never in a bundle)
+CONFIG_SRC = "common_files"          # your golden configs + shipped templates
+SHARED_DIRS = (CONFIG_SRC,)           # bundle files written here, nothing removed
 CONFIG_LINK_DIR = "flowgen/configs"   # created by unpack, one link per config
 
 HEADER_RE = re.compile(r"^#@@FILE (\S+) mode=([0-7]{3}) enc=(text|b64) lines=(\d+) "
@@ -1391,13 +1797,12 @@ def link_configs(out_dir):
         return
     rel_src = os.path.relpath(src, link_dir)       # ../../common_files
     names = sorted(n for n in os.listdir(src)
-                   if not n.startswith(".") and os.path.isfile(os.path.join(src, n)))
+                   if n.endswith(".config.tcl") and os.path.isfile(os.path.join(src, n)))
     linked = 0
     for name in names:
         dest = os.path.join(link_dir, name)
-        if os.path.lexists(dest):        # e.g. block_template.config.tcl from the bundle
-            print("unpack: WARNING: %s/%s already exists (from the bundle); not linked"
-                  % (CONFIG_LINK_DIR, name))
+        if os.path.lexists(dest):        # a file of that name came with the bundle
+            print("unpack: WARNING: %s/%s already exists; not linked" % (CONFIG_LINK_DIR, name))
             continue
         os.symlink(os.path.join(rel_src, name), dest)
         linked += 1
@@ -1409,8 +1814,8 @@ def main(argv=None):
     parser.add_argument("bundle", help="bundle file made by pack.py")
     parser.add_argument("-d", "--dir", default=".", help="output directory (default: .)")
     parser.add_argument("--force", action="store_true",
-                        help="remove the existing flowgen/ (top-level directories in the "
-                             "bundle) before unpacking; nothing else is removed")
+                        help="remove the existing flowgen/ and examples/ before unpacking; "
+                             "common_files/ and everything else is kept")
     parser.add_argument("--list", action="store_true", help="only list the files")
     args = parser.parse_args(argv)
 
@@ -1425,7 +1830,8 @@ def main(argv=None):
         return 0
 
     # Top-level directories (flowgen) this bundle owns.
-    tops = sorted(set(p.split("/")[0] for p, _, _ in files if "/" in p))
+    tops = sorted(set(p.split("/")[0] for p, _, _ in files
+                      if "/" in p and p.split("/")[0] not in SHARED_DIRS))
     existing = [t for t in tops if os.path.lexists(os.path.join(args.dir, t))]
     if existing and not args.force:
         sys.exit("unpack: ERROR: already exists in %s: %s\n"

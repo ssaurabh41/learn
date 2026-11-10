@@ -43,26 +43,33 @@ bundle.txt                 all packed files (copy this to the workstation)
 pack.py                    packs git-tracked files into bundle.txt
 unpack.py                  recreates files from bundle.txt
 session.md                 this file
-common_files/              golden block configs (LOCAL ONLY, never packed;
-                           repo copy holds only a README)
+common_files/              shared with the user's golden configs
+  README.md
+  block_template.config.csv   spreadsheet template, every setting documented
+  block_template.config.tcl   same template as Tcl (generated from the CSV)
+  csv2config.py               <block>.config.csv -> <block>.config.tcl
+examples/                  placeholder design for the template + regression
+  rtl/ (block_pkg.sv, block.sv, source.f, include/block_defines.svh)
+  syn/ (block.syn.v, block.svf)   lib/stdcell_tt.db   env/setup.cshrc
+  run_regression.csh
 flowgen/
   flowgen.py               the generator
   runflowgen.sh            tcsh wrapper: runs flowgen.py with python3
   README.md
-  configs/
-    block_template.config.tcl   template listing every setting
 docs/                      unrelated older docs (excluded from pack)
 ```
 
-On the workstation, after unpacking, flowgen/configs/ also holds one
-symlink per file in the local common_files/:
+Config files are named <block_name>.config.tcl and live in common_files/.
+On the workstation, unpack creates flowgen/configs/ with one symlink per
+common_files/*.config.tcl (template included):
 `flowgen/configs/<name> -> ../../common_files/<name>`
 
 ## pack.py / unpack.py
 
 - `python3 pack.py [-o BUNDLE] [ROOT]`, default output bundle.txt.
 - Packs only git-tracked files (so `git add` new files BEFORE packing).
-  Excludes docs/ and common_files/ (EXCLUDE_DIRS).
+  Excludes docs/ (EXCLUDE_DIRS). The repo's common_files/ holds only the
+  shipped tool files; user configs are never in git.
 - Bundle format 3 (`#@@PACK 3`), pure ASCII. Each file has a header
   `#@@FILE <path> mode=<octal> enc=<text|b64> lines=<n> eol=<0|1> md5=<hex>`,
   its lines, then `#@@END <path>`. Pure-ASCII text files are stored as
@@ -71,15 +78,44 @@ symlink per file in the local common_files/:
   in transit: byte 0xbf at offset 114).
 - `python3 unpack.py BUNDLE [-d DIR] [--force] [--list]`
   - Validates the whole bundle (MD5 per file) before writing anything.
-  - If flowgen/ already exists: error without --force. With --force it
-    removes flowgen/ only, then recreates it. Nothing outside flowgen/ is
-    removed; common_files/ is never touched. Top-level files (pack.py,
-    unpack.py) are simply overwritten.
-  - Then creates flowgen/configs/ links to each file in DIR/common_files/
-    (skips dotfiles, subdirectories, and names already present such as
-    the template). Warns if common_files/ is missing.
+  - Owned dirs flowgen/ and examples/: error if they exist, unless
+    --force, which removes and recreates them.
+  - Shared dir common_files/: bundle files (templates, csv2config.py,
+    README) are written/overwritten; nothing else there is removed or
+    changed. User configs are never touched.
+  - Top-level files (pack.py, unpack.py, session.md, .gitignore) are
+    overwritten.
+  - Then links every DIR/common_files/*.config.tcl into flowgen/configs/.
+    Warns if common_files/ is missing.
   - Only `--force` (double dash) is accepted.
 - Regenerate the bundle after every change and commit it.
+
+## csv2config.py (common_files/)
+
+- `csv2config.py [--force] [-o OUTPUT] <block>.config.csv` writes
+  <block>.config.tcl next to the CSV. Refuses to overwrite unless --force.
+  The CSV is the master once used; the .tcl starts with
+  "# From <csv>. Edit the CSV and rerun csv2config.py."
+- CSV columns: Setting, Value, Required, Description, Example. Delimiter
+  , ; or tab (auto); UTF-8 with or without BOM.
+- One value per row; list settings (LIST_SETTINGS in csv2config.py) take
+  more rows with the same Setting or an empty Setting cell. A single-value
+  setting repeated is an error. "# ..." rows are headings (written only if
+  a setting follows). Empty TOOL_*/ENV_SETENV array rows are left out.
+  Unknown names become helper variables (usable as $NAME).
+- Values are written in double quotes with \ " [ ] escaped; $NAME stays live.
+- LibreOffice 6.4: set the Value column type to Text when opening.
+- LIST_SETTINGS duplicates flowgen's knowledge of list settings (known smell).
+
+## Regression
+
+`examples/run_regression.csh` (tcsh, python3 with tkinter on PATH):
+1. csv2config on block_template.config.csv must reproduce
+   common_files/block_template.config.tcl exactly
+2. flowgen on the template config must print no WARNING/ERROR
+3. run directory must contain run_rtl2syn.csh, rtl2syn/rtl2syn.tcl,
+   rtl2syn/logs, rtl2syn/reports, the config copy; run script parses.
+Output in examples/regression_out/ (gitignored). Run it after every change.
 
 ## flowgen.py
 
@@ -150,8 +186,9 @@ How it works:
     "/tools/setup.cshrc"
   }
   ```
-- Helper variables (PROJ_ROOT, USER_RTL_DIR, ...) are optional and only
-  shown commented out in the template; flowgen never depends on them.
+- Helper variables (PROJ_ROOT, USER_RTL_DIR, ...) are optional; flowgen
+  never depends on them. The template's paths are relative
+  (../examples/...) so it runs as-is from common_files/.
 - Design name in examples: "block".
 
 Settings:
