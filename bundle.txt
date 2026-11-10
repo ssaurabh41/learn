@@ -1,4 +1,9 @@
 #@@PACK 3
+#@@FILE .gitignore mode=644 enc=text lines=3 eol=1 md5=a4ca20dd2cc1d4491cc7c5369497280b
+# Generated flowgen run directories (local output, never packed)
+runs/
+*_formality/
+#@@END .gitignore
 #@@FILE flowgen/README.md mode=644 enc=text lines=67 eol=1 md5=5e4beaf9a615f251ae08b85c29fd2da3
 # flowgen
 
