@@ -152,8 +152,8 @@ class Config(object):
 
         # Design data
         self.rtl_format = self.choice("RTL_FORMAT", RTL_READERS, default="sverilog")
-        self.rtl = self.fileset("RTL_FILES", "RTL_SEARCH_DIRS", required=True)
-        self.rtl.incdirs += self.paths("RTL_INCDIRS")
+        self.rtl = self.fileset("RTL_FILES", "RTL_SEARCH_DIRS", required=True,
+                                incdirs=self.paths("RTL_INCDIRS"))
         self.rtl.defines += self.tcl_list("RTL_DEFINES")
         if self.rtl_format == "vhdl" and (self.rtl.incdirs or self.rtl.defines):
             self.errors.append("RTL_INCDIRS / RTL_DEFINES (or +incdir+/+define+ in a .f "
@@ -248,7 +248,8 @@ class Config(object):
             try:
                 item = str(self._tcl.call("subst", "-nocommands", "-nobackslashes", item))
             except tkinter.TclError as exc:
-                self.errors.append("%s: %s" % (name, exc))
+                self.errors.append("%s: %s (define the variable in the config, or remove it "
+                                   "from the value)" % (name, exc))
                 continue
             if item.strip():
                 items.append(item.strip())
@@ -285,22 +286,33 @@ class Config(object):
         order), then relative to base (default the config dir). Warn if missing."""
         path = os.path.expanduser(path)
         base = base or self.dir
-        if os.path.isabs(path) or not search:
-            return self.resolve(label, path, base)
-        candidates = [os.path.normpath(os.path.join(d, path)) for d in search]
-        candidates.append(os.path.normpath(os.path.join(base, path)))
-        found = []
-        for c in candidates:
-            if os.path.exists(c) and c not in found:
-                found.append(c)
+        if os.path.isabs(path):
+            return self.resolve(label, path)
+        dirs = []
+        for d in search + [base]:
+            if d not in dirs:
+                dirs.append(d)
+        found = [os.path.normpath(os.path.join(d, path)) for d in dirs
+                 if os.path.isfile(os.path.join(d, path))]
         if len(found) > 1:
             self.warnings.append("%s: %s found in several places, using %s"
                                  % (label, path, found[0]))
         if found:
             return found[0]
         self.warnings.append("%s: file not found: %s (searched: %s)"
-                             % (label, path, ", ".join(search + [base])))
-        return candidates[-1]
+                             % (label, path, ", ".join(dirs)))
+        return os.path.normpath(os.path.join(base, path))
+
+    def expand(self, text):
+        """Expand $NAME / ${NAME} in a .f line: config variables first, then
+        environment variables. Unknown names are left as they are."""
+        def repl(m):
+            name = m.group(1) or m.group(2)
+            value = self._raw.get(name)
+            if isinstance(value, str):
+                return value
+            return os.environ.get(name, m.group(0))
+        return re.sub(r"\$\{(\w+)\}|\$(\w+)", repl, text)
 
     def paths(self, name, required=False):
         return [self.resolve(name, p) for p in self.tcl_list(name, required=required)]
@@ -311,10 +323,15 @@ class Config(object):
             self.errors.append("%s: give one file, got %d" % (name, len(items)))
         return items[0] if items else ""
 
-    def fileset(self, name, search_var=None, required=False, netlist=False):
+    def fileset(self, name, search_var=None, required=False, netlist=False, incdirs=()):
         """Files from a list variable; entries ending in .f are file lists.
-        Relative names are looked up in the search_var directories."""
+
+        File names without a full path are looked up in the search_var dirs,
+        then the include dirs (incdirs plus +incdir+ from .f files), then
+        next to the config or .f file, in that order.
+        """
         result = FileSet()
+        result.incdirs = list(incdirs)
         search = []
         if search_var:
             search = self.paths(search_var)
@@ -324,30 +341,34 @@ class Config(object):
         items = self.tcl_list(name)
         if required and not items:
             self.file_error("%s is empty" % name)
+
+        # Collect all names first, so +incdir+ dirs from anywhere in the .f
+        # files are known before any file is looked up.
+        refs = []                        # (label for messages, name, base dir)
         for item in items:
             if item.endswith(".f"):
-                self.read_filelist(name, item, result, [], search)
+                self.read_filelist(name, item, result, refs, [], search)
             else:
-                result.files.append(self.find(name, item, search))
+                refs.append((name, item, None))
         if netlist and (result.incdirs or result.defines):
             self.warnings.append("%s: +incdir+/+define+ in a .f file ignored for netlists" % name)
             result.incdirs, result.defines = [], []
+        lookup = search + [d for d in result.incdirs if d not in search]
+        for label, ref, base in refs:
+            path = self.find(label, ref, lookup, base)
+            if path not in result.files:     # a file listed twice is read once
+                result.files.append(path)
         if required and items and not result.files and not result.unreadable:
             self.file_error("%s: the .f file lists contain no files" % name)
-        unique = []
-        for f in result.files:           # a file listed twice is read once
-            if f not in unique:
-                unique.append(f)
-        result.files = unique
         return result
 
-    def read_filelist(self, name, path, result, stack, search, base=None):
-        """Expand a .f file: one path per line, // or # comments, $VAR expanded.
+    def read_filelist(self, name, path, result, refs, stack, search, base=None):
+        """Read a .f file: one name per line, // or # comments, $VAR expanded
+        (config variables, then environment variables).
 
         Also understands -f/-F <file> (nested lists), -v <file>,
         +incdir+<dir>[+<dir>...] and +define+<MACRO>[=<value>][+...].
-        Relative file names are looked up in the search dirs, then relative
-        to the .f file's directory. +incdir+ dirs are relative to the .f file.
+        File names go to refs; +incdir+ dirs are relative to the .f file.
         """
         label = "%s (%s)" % (name, os.path.basename(path))
         path = os.path.expanduser(path)
@@ -373,7 +394,7 @@ class Config(object):
             line = line.split("//", 1)[0].strip()
             if not line or line.startswith("#"):
                 continue
-            tokens = [os.path.expandvars(t) for t in line.split()]
+            tokens = [self.expand(t) for t in line.split()]
             i = 0
             while i < len(tokens):
                 tok = tokens[i]
@@ -385,12 +406,11 @@ class Config(object):
                     if tok == "-y":
                         self.warnings.append("%s: -y library directories are not supported, "
                                              "ignored: %s" % (where, tokens[i + 1]))
+                    elif tok == "-v":
+                        refs.append((where, tokens[i + 1], base))
                     else:
-                        if tok == "-v":
-                            result.files.append(self.find(where, tokens[i + 1], search, base))
-                        else:
-                            self.read_filelist(name, tokens[i + 1], result, stack + [path],
-                                               search, base)
+                        self.read_filelist(name, tokens[i + 1], result, refs,
+                                           stack + [path], search, base)
                     i += 2
                     continue
                 if tok.startswith("+incdir+"):
@@ -401,7 +421,7 @@ class Config(object):
                 elif tok.startswith(("-", "+")):
                     self.warnings.append("%s: option %s not supported, ignored" % (where, tok))
                 else:
-                    result.files.append(self.find(where, tok, search, base))
+                    refs.append((where, tok, base))
                 i += 1
 
 

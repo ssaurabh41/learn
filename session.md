@@ -130,7 +130,11 @@ How it works:
   with a warning.
 - Relative file names in RTL_FILES/SYN_FILES and their .f lists (and .f
   files themselves) are looked up in RTL_SEARCH_DIRS/SYN_SEARCH_DIRS in
-  order, then next to the config or .f file. First match wins (warning if
+  order, then (RTL only) RTL_INCDIRS and +incdir+ dirs, then next to the
+  config or .f file. All .f files are read first, so +incdir+ lines apply
+  to every file name.
+- $NAME / ${NAME} in .f files: config variables first (e.g. USER_RTL_DIR),
+  then environment variables; unknown names are left as is. First match wins (warning if
   found in several). Duplicate files are read once.
 
 ## Config style (block.config.tcl)
@@ -146,7 +150,8 @@ How it works:
     "/tools/setup.cshrc"
   }
   ```
-- Helper variable PROJ_ROOT (not read by flowgen) for paths.
+- Helper variables (PROJ_ROOT, USER_RTL_DIR, ...) are optional and only
+  shown commented out in the template; flowgen never depends on them.
 - Design name in examples: "block".
 
 Settings:

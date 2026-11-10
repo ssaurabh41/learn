@@ -14,8 +14,11 @@
 # Relative paths are relative to this file's directory (common_files/).
 
 
-# Project root. Helper for the paths below, not read by flowgen.
-set PROJ_ROOT "/proj/chip"
+# Optional helper variables for your own paths. flowgen does not need or
+# read them; use them in values, lists and .f files as $NAME.
+# Example:
+# set PROJ_ROOT "/proj/chip"
+# set USER_RTL_DIR "/proj/chip/block/rtl"
 
 # Top-level design (module) name. Required.
 set TOP_DESIGN "block"
@@ -32,13 +35,14 @@ set FLOWS {
 set RTL_FORMAT "sverilog"
 
 # Directories searched, in order, for RTL files given without a full path,
-# in RTL_FILES and inside .f file lists.
+# in RTL_FILES and inside .f file lists. RTL_INCDIRS are searched next.
 set RTL_SEARCH_DIRS {
-  "$PROJ_ROOT/block/rtl"
+  "/proj/chip/block/rtl"
 }
 
 # RTL files or .f file lists. Required.
-# A .f file has one file per line; // and # start comments.
+# A .f file has one file per line; // and # start comments; $NAME uses
+# config variables, then environment variables.
 # Example with files instead of a file list:
 # set RTL_FILES {
 #   "block_pkg.sv"
@@ -48,10 +52,11 @@ set RTL_FILES {
   "source.f"
 }
 
-# Include directories for `include files. Not for vhdl.
+# Include directories for `include files. Also searched for RTL file names
+# after RTL_SEARCH_DIRS. Not for vhdl.
 # Example:
 # set RTL_INCDIRS {
-#   "$PROJ_ROOT/block/rtl/include"
+#   "/proj/chip/block/rtl/include"
 # }
 set RTL_INCDIRS {}
 
@@ -69,7 +74,7 @@ set RTL_DEFINES {}
 # Directories searched, in order, for netlist files given without a full
 # path, in SYN_FILES and inside .f file lists.
 set SYN_SEARCH_DIRS {
-  "$PROJ_ROOT/block/syn/outputs"
+  "/proj/chip/block/syn/outputs"
 }
 
 # Synthesized netlist files or .f file lists. Required for rtl2syn.
@@ -80,7 +85,7 @@ set SYN_FILES {
 # Place-and-route netlist files or .f file lists. Not used by rtl2syn.
 # Example:
 # set APR_FILES {
-#   "$PROJ_ROOT/block/apr/outputs/block.apr.v"
+#   "/proj/chip/block/apr/outputs/block.apr.v"
 # }
 set APR_FILES {}
 
@@ -88,19 +93,19 @@ set APR_FILES {}
 # GUIDANCE AND CONSTRAINTS
 
 # SVF guidance file from synthesis. Recommended for Formality.
-set SVF_FILE "$PROJ_ROOT/block/syn/outputs/block.svf"
+set SVF_FILE "/proj/chip/block/syn/outputs/block.svf"
 
 # Timing constraint files. Not used by Formality.
 # Example:
 # set SDC_FILES {
-#   "$PROJ_ROOT/block/constraints/block.sdc"
+#   "/proj/chip/block/constraints/block.sdc"
 # }
 set SDC_FILES {}
 
 # Power intent files. Not used by flowgen yet.
 # Example:
 # set UPF_FILES {
-#   "$PROJ_ROOT/block/upf/block.upf"
+#   "/proj/chip/block/upf/block.upf"
 # }
 set UPF_FILES {}
 
@@ -146,7 +151,7 @@ set BLACKBOX_MODULES {}
 
 # Your own Tcl files, sourced at: setup, pre_match, pre_verify, post_verify.
 # Example:
-# set TOOL_HOOKS(formality,pre_match) "$PROJ_ROOT/block/fm/constants.tcl"
+# set TOOL_HOOKS(formality,pre_match) "/proj/chip/block/fm/constants.tcl"
 
 
 # RUN ENVIRONMENT

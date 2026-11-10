@@ -41,7 +41,9 @@ The config is plain Tcl. Start from `configs/block_template.config.tcl`, which e
 - Lists go in braces, one double-quoted item per line. flowgen expands `$VARIABLES` inside list items.
 - Relative paths are resolved from the config file's real directory (`common_files/`, even when run through a `flowgen/configs/` link).
 - File lists (`RTL_FILES`, `SYN_FILES`, `APR_FILES`, `SIM_FILES`) accept `.f` files. A `.f` file holds one path per line, with `//` or `#` comments. It may also contain `-f`, `-v`, `+incdir+` and `+define+`.
-- File names without a full path in `RTL_FILES`, `SYN_FILES` and their `.f` lists are looked up in `RTL_SEARCH_DIRS` / `SYN_SEARCH_DIRS`, in order, then next to the config (or the `.f` file). A name found in several directories uses the first one, with a warning. A file listed twice is read once.
+- File names without a full path in `RTL_FILES`, `SYN_FILES` and their `.f` lists are looked up in `RTL_SEARCH_DIRS` / `SYN_SEARCH_DIRS`, in order, then (for RTL) in `RTL_INCDIRS` and `+incdir+` dirs, then next to the config (or the `.f` file).
+- `$NAME` inside a `.f` file uses config variables (e.g. your own `USER_RTL_DIR`), then environment variables.
+- Helper variables such as `PROJ_ROOT` are optional; flowgen never needs them. A name found in several directories uses the first one, with a warning. A file listed twice is read once.
 - Misspelled setting names and missing files produce warnings. Errors are all reported together, and nothing is generated if there are any.
 
 Block configs live in the top-level `common_files/` directory. `unpack.py` creates `flowgen/configs/` with a link to each file in `common_files/`; re-run it with `--force` after adding a config. `common_files/` holds your golden configs on your own machine: it is never packed into `bundle.txt`, and `unpack.py` never touches it.
