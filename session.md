@@ -91,6 +91,7 @@ flowgen.py [--force] CONFIG
 - CONFIG: block config, typically block.config.tcl (any name works),
   usually given as configs/block.config.tcl.
 - --force: missing or unreadable input files (e.g. a missing .f list)
+  and empty required file lists (RTL_FILES, SYN_FILES, LIB_FILES)
   become warnings and the run directory is generated anyway; the ignored
   problems are listed in the generated script header. Other config
   errors (missing settings, bad values, Tcl errors) still stop it.
@@ -127,11 +128,17 @@ How it works:
   comments, $VAR from the environment, relative to the .f file. Supports
   nested -f/-F, -v, +incdir+, +define+. -y and other options are ignored
   with a warning.
+- Relative file names in RTL_FILES/SYN_FILES and their .f lists (and .f
+  files themselves) are looked up in RTL_SEARCH_DIRS/SYN_SEARCH_DIRS in
+  order, then next to the config or .f file. First match wins (warning if
+  found in several). Duplicate files are read once.
 
 ## Config style (block.config.tcl)
 
-- Human-readable comments, each setting with an "Example:" block.
-  No decorative separator characters.
+- Short human-readable comments. "Example:" blocks only where the
+  setting starts empty or commented out; examples aligned flush with "#"
+  (`# set NAME {` / `#   "item"` / `# }`). No decorative separators,
+  no bloat.
 - Single values in double quotes: `set TOP_DESIGN "block"`.
 - Lists in braces, one double-quoted item per line, 2-space indent:
   ```
@@ -149,8 +156,10 @@ Settings:
 | TOP_DESIGN | yes | top module |
 | FLOWS | | flows to generate, default rtl2syn |
 | RTL_FORMAT | | sverilog (default), verilog, vhdl |
+| RTL_SEARCH_DIRS | | dirs searched (in order) for RTL file names |
 | RTL_FILES | yes | RTL files or .f lists |
 | RTL_INCDIRS, RTL_DEFINES | | include dirs, macros (not for vhdl) |
+| SYN_SEARCH_DIRS | | dirs searched (in order) for netlist file names |
 | SYN_FILES | yes for rtl2syn | synthesized netlist files or .f lists |
 | APR_FILES | | APR netlist (future flows) |
 | SVF_FILE | | synthesis guidance |

@@ -10,7 +10,7 @@ The first supported tool is Synopsys Formality, with the `rtl2syn` flow: RTL ref
 runflowgen.sh configs/block.config.tcl
 ```
 
-`runflowgen.sh` is a csh (tcsh) wrapper that runs `flowgen.py` with `python3`, passing all arguments through. Add `--force` to generate even when input files are missing.
+`runflowgen.sh` is a csh (tcsh) wrapper that runs `flowgen.py` with `python3`, passing all arguments through. Add `--force` to generate even when input files are missing or a required file list is empty.
 
 This creates the following in the current directory. If the directory already exists, it is overwritten.
 
@@ -41,6 +41,7 @@ The config is plain Tcl. Start from `configs/block_template.config.tcl`, which e
 - Lists go in braces, one double-quoted item per line. flowgen expands `$VARIABLES` inside list items.
 - Relative paths are resolved from the config file's real directory (`common_files/`, even when run through a `flowgen/configs/` link).
 - File lists (`RTL_FILES`, `SYN_FILES`, `APR_FILES`, `SIM_FILES`) accept `.f` files. A `.f` file holds one path per line, with `//` or `#` comments. It may also contain `-f`, `-v`, `+incdir+` and `+define+`.
+- File names without a full path in `RTL_FILES`, `SYN_FILES` and their `.f` lists are looked up in `RTL_SEARCH_DIRS` / `SYN_SEARCH_DIRS`, in order, then next to the config (or the `.f` file). A name found in several directories uses the first one, with a warning. A file listed twice is read once.
 - Misspelled setting names and missing files produce warnings. Errors are all reported together, and nothing is generated if there are any.
 
 Block configs live in the top-level `common_files/` directory. `unpack.py` creates `flowgen/configs/` with a link to each file in `common_files/`; re-run it with `--force` after adding a config. `common_files/` holds your golden configs on your own machine: it is never packed into `bundle.txt`, and `unpack.py` never touches it.
@@ -50,8 +51,10 @@ Block configs live in the top-level `common_files/` directory. `unpack.py` creat
 | `TOP_DESIGN` | yes | top module |
 | `FLOWS` | | flows to generate (default `rtl2syn`) |
 | `RTL_FORMAT` | | `sverilog` (default), `verilog`, `vhdl` |
+| `RTL_SEARCH_DIRS` | | directories searched for RTL file names |
 | `RTL_FILES` | yes | RTL files or `.f` lists |
 | `RTL_INCDIRS`, `RTL_DEFINES` | | include dirs, macros |
+| `SYN_SEARCH_DIRS` | | directories searched for netlist file names |
 | `SYN_FILES` | yes (rtl2syn) | synthesized netlist files or `.f` lists |
 | `APR_FILES` | | APR netlist files (for future flows) |
 | `SVF_FILE` | | synthesis guidance file |

@@ -10,9 +10,10 @@ Arguments:
     CONFIG    The block config file to read, typically block.config.tcl
               (any name works). Usually given through the configs link
               directory, e.g. configs/block.config.tcl.
-    --force   Generate the run directory even if input files are missing
-              or a .f file list cannot be read. Those errors become
-              warnings. Use it to try out the flow before all design files
+    --force   Generate the run directory even if input files are missing,
+              a .f file list cannot be read, or a required file list
+              (RTL_FILES, SYN_FILES, LIB_FILES) is empty. Those errors
+              become warnings. Use it to try out the flow before all design files
               exist. Other config errors (missing settings, bad values,
               Tcl errors) still stop generation.
     -h        Show this help and exit.
@@ -66,8 +67,8 @@ FM = "formality"          # tool key in TOOL_SETTINGS / TOOL_CMD / TOOL_HOOKS
 # treated as a user helper variable.
 KNOWN_VARS = (
     "TOP_DESIGN", "FLOWS",
-    "RTL_FORMAT", "RTL_FILES", "RTL_INCDIRS", "RTL_DEFINES",
-    "SYN_FILES", "APR_FILES", "SVF_FILE", "SDC_FILES", "UPF_FILES",
+    "RTL_FORMAT", "RTL_SEARCH_DIRS", "RTL_FILES", "RTL_INCDIRS", "RTL_DEFINES",
+    "SYN_SEARCH_DIRS", "SYN_FILES", "APR_FILES", "SVF_FILE", "SDC_FILES", "UPF_FILES",
     "LIB_FORMAT", "LIB_FILES", "SIM_FILES", "BLACKBOX_MODULES",
     "TOOL_CMD", "TOOL_SETTINGS", "TOOL_HOOKS",
     "ENV_SOURCE", "ENV_SETENV",
@@ -122,6 +123,7 @@ class FileSet(object):
         self.files = []
         self.incdirs = []
         self.defines = []
+        self.unreadable = False    # a .f file list could not be read
 
 
 class Config(object):
@@ -130,6 +132,7 @@ class Config(object):
     def __init__(self, path, force=False):
         self.force = force
         self.forced = []      # file errors downgraded to warnings by --force
+        self.file_errors = False
         self.path = os.path.realpath(path)   # follow flowgen/configs links to common_files
         self.dir = os.path.dirname(self.path)
         self.errors = []
@@ -149,14 +152,14 @@ class Config(object):
 
         # Design data
         self.rtl_format = self.choice("RTL_FORMAT", RTL_READERS, default="sverilog")
-        self.rtl = self.fileset("RTL_FILES", required=True)
+        self.rtl = self.fileset("RTL_FILES", "RTL_SEARCH_DIRS", required=True)
         self.rtl.incdirs += self.paths("RTL_INCDIRS")
         self.rtl.defines += self.tcl_list("RTL_DEFINES")
         if self.rtl_format == "vhdl" and (self.rtl.incdirs or self.rtl.defines):
             self.errors.append("RTL_INCDIRS / RTL_DEFINES (or +incdir+/+define+ in a .f "
                                "file) only apply to verilog/sverilog")
         needs_syn = "rtl2syn" in self.flows
-        self.syn = self.fileset("SYN_FILES", required=needs_syn, netlist=True)
+        self.syn = self.fileset("SYN_FILES", "SYN_SEARCH_DIRS", required=needs_syn, netlist=True)
         self.apr = self.fileset("APR_FILES", netlist=True)        # for future flows
         self.svf = self.single_path("SVF_FILE")
         self.sdc = self.paths("SDC_FILES")                        # not used by Formality
@@ -164,7 +167,9 @@ class Config(object):
 
         # Libraries and simulation models
         self.lib_format = self.choice("LIB_FORMAT", LIB_READERS, default="db")
-        self.libs = self.paths("LIB_FILES", required=True)
+        self.libs = self.paths("LIB_FILES")
+        if not self.libs:
+            self.file_error("LIB_FILES is empty")
         if self.lib_format in LIB_EXTENSIONS:
             for lib in self.libs:
                 if not lib.endswith(LIB_EXTENSIONS[self.lib_format]):
@@ -203,6 +208,7 @@ class Config(object):
             self.forced.append(msg)
             self.warnings.append("%s (ignored: --force)" % msg)
         else:
+            self.file_errors = True
             self.errors.append(msg)
 
     # Typed getters
@@ -274,6 +280,28 @@ class Config(object):
             self.warnings.append("%s: file not found: %s" % (label, full))
         return full
 
+    def find(self, label, path, search, base=None):
+        """Locate a file: absolute as given; relative in the search dirs (in
+        order), then relative to base (default the config dir). Warn if missing."""
+        path = os.path.expanduser(path)
+        base = base or self.dir
+        if os.path.isabs(path) or not search:
+            return self.resolve(label, path, base)
+        candidates = [os.path.normpath(os.path.join(d, path)) for d in search]
+        candidates.append(os.path.normpath(os.path.join(base, path)))
+        found = []
+        for c in candidates:
+            if os.path.exists(c) and c not in found:
+                found.append(c)
+        if len(found) > 1:
+            self.warnings.append("%s: %s found in several places, using %s"
+                                 % (label, path, found[0]))
+        if found:
+            return found[0]
+        self.warnings.append("%s: file not found: %s (searched: %s)"
+                             % (label, path, ", ".join(search + [base])))
+        return candidates[-1]
+
     def paths(self, name, required=False):
         return [self.resolve(name, p) for p in self.tcl_list(name, required=required)]
 
@@ -283,38 +311,62 @@ class Config(object):
             self.errors.append("%s: give one file, got %d" % (name, len(items)))
         return items[0] if items else ""
 
-    def fileset(self, name, required=False, netlist=False):
-        """Files from a list variable; entries ending in .f are file lists."""
+    def fileset(self, name, search_var=None, required=False, netlist=False):
+        """Files from a list variable; entries ending in .f are file lists.
+        Relative names are looked up in the search_var directories."""
         result = FileSet()
-        items = self.paths(name, required=required)
+        search = []
+        if search_var:
+            search = self.paths(search_var)
+            for d in search:
+                if os.path.exists(d) and not os.path.isdir(d):
+                    self.errors.append("%s: not a directory: %s" % (search_var, d))
+        items = self.tcl_list(name)
+        if required and not items:
+            self.file_error("%s is empty" % name)
         for item in items:
             if item.endswith(".f"):
-                self.read_filelist(name, item, result, [])
+                self.read_filelist(name, item, result, [], search)
             else:
-                result.files.append(item)
+                result.files.append(self.find(name, item, search))
         if netlist and (result.incdirs or result.defines):
             self.warnings.append("%s: +incdir+/+define+ in a .f file ignored for netlists" % name)
             result.incdirs, result.defines = [], []
-        if required and items and not result.files:
+        if required and items and not result.files and not result.unreadable:
             self.file_error("%s: the .f file lists contain no files" % name)
+        unique = []
+        for f in result.files:           # a file listed twice is read once
+            if f not in unique:
+                unique.append(f)
+        result.files = unique
         return result
 
-    def read_filelist(self, name, path, result, stack):
+    def read_filelist(self, name, path, result, stack, search, base=None):
         """Expand a .f file: one path per line, // or # comments, $VAR expanded.
 
         Also understands -f/-F <file> (nested lists), -v <file>,
         +incdir+<dir>[+<dir>...] and +define+<MACRO>[=<value>][+...].
-        Relative paths are relative to the .f file's directory.
+        Relative file names are looked up in the search dirs, then relative
+        to the .f file's directory. +incdir+ dirs are relative to the .f file.
         """
         label = "%s (%s)" % (name, os.path.basename(path))
+        path = os.path.expanduser(path)
+        searched = ""
+        if not os.path.isabs(path):
+            dirs = search + [base or self.dir]
+            found = [os.path.join(d, path) for d in dirs if os.path.isfile(os.path.join(d, path))]
+            path = os.path.normpath(found[0] if found else os.path.join(base or self.dir, path))
+            searched = " (searched: %s)" % ", ".join(dirs)
         if path in stack:
             self.errors.append("%s: file list includes itself" % label)
             return
         try:
             with open(path) as fh:
                 lines = fh.readlines()
-        except (IOError, OSError) as exc:
-            self.file_error("%s: cannot read file list: %s" % (label, exc))
+        except (IOError, OSError):
+            result.unreadable = True
+            self.file_error("%s: file list not found or not readable: %s%s"
+                            % (label, path, searched))
             return
         base = os.path.dirname(path)
         for lineno, line in enumerate(lines, 1):
@@ -334,11 +386,11 @@ class Config(object):
                         self.warnings.append("%s: -y library directories are not supported, "
                                              "ignored: %s" % (where, tokens[i + 1]))
                     else:
-                        arg = self.resolve(where, tokens[i + 1], base)
                         if tok == "-v":
-                            result.files.append(arg)
+                            result.files.append(self.find(where, tokens[i + 1], search, base))
                         else:
-                            self.read_filelist(name, arg, result, stack + [path])
+                            self.read_filelist(name, tokens[i + 1], result, stack + [path],
+                                               search, base)
                     i += 2
                     continue
                 if tok.startswith("+incdir+"):
@@ -349,7 +401,7 @@ class Config(object):
                 elif tok.startswith(("-", "+")):
                     self.warnings.append("%s: option %s not supported, ignored" % (where, tok))
                 else:
-                    result.files.append(self.resolve(where, tok, base))
+                    result.files.append(self.find(where, tok, search, base))
                 i += 1
 
 
@@ -535,8 +587,8 @@ def main(argv=None):
     parser.add_argument("config", metavar="CONFIG",
                         help="block config file, typically block.config.tcl")
     parser.add_argument("--force", action="store_true",
-                        help="generate even if input files are missing or a .f file "
-                             "list cannot be read (those errors become warnings)")
+                        help="generate even if input files are missing or required file "
+                             "lists are empty (those errors become warnings)")
     args = parser.parse_args(argv)
 
     if not os.path.isfile(args.config):
@@ -553,8 +605,8 @@ def main(argv=None):
         for msg in cfg.errors:
             print("flowgen: ERROR: %s" % msg)
         hint = ""
-        if not args.force and any("file list" in m for m in cfg.errors):
-            hint = " Use --force to generate anyway with missing files."
+        if not args.force and cfg.file_errors:
+            hint = " Use --force to generate anyway with missing or empty file lists."
         sys.exit("flowgen: %d error(s) in %s; nothing generated.%s"
                  % (len(cfg.errors), cfg.path, hint))
 

@@ -4,7 +4,7 @@
 runs/
 *_formality/
 #@@END .gitignore
-#@@FILE flowgen/README.md mode=644 enc=text lines=67 eol=1 md5=5e4beaf9a615f251ae08b85c29fd2da3
+#@@FILE flowgen/README.md mode=644 enc=text lines=70 eol=1 md5=d562b36f803b20a21e200aadea1ab804
 # flowgen
 
 Generates EDA run directories from one Tcl block config. Python 3.6+ (with tkinter), standard library only.
@@ -17,7 +17,7 @@ The first supported tool is Synopsys Formality, with the `rtl2syn` flow: RTL ref
 runflowgen.sh configs/block.config.tcl
 ```
 
-`runflowgen.sh` is a csh (tcsh) wrapper that runs `flowgen.py` with `python3`, passing all arguments through. Add `--force` to generate even when input files are missing.
+`runflowgen.sh` is a csh (tcsh) wrapper that runs `flowgen.py` with `python3`, passing all arguments through. Add `--force` to generate even when input files are missing or a required file list is empty.
 
 This creates the following in the current directory. If the directory already exists, it is overwritten.
 
@@ -48,6 +48,7 @@ The config is plain Tcl. Start from `configs/block_template.config.tcl`, which e
 - Lists go in braces, one double-quoted item per line. flowgen expands `$VARIABLES` inside list items.
 - Relative paths are resolved from the config file's real directory (`common_files/`, even when run through a `flowgen/configs/` link).
 - File lists (`RTL_FILES`, `SYN_FILES`, `APR_FILES`, `SIM_FILES`) accept `.f` files. A `.f` file holds one path per line, with `//` or `#` comments. It may also contain `-f`, `-v`, `+incdir+` and `+define+`.
+- File names without a full path in `RTL_FILES`, `SYN_FILES` and their `.f` lists are looked up in `RTL_SEARCH_DIRS` / `SYN_SEARCH_DIRS`, in order, then next to the config (or the `.f` file). A name found in several directories uses the first one, with a warning. A file listed twice is read once.
 - Misspelled setting names and missing files produce warnings. Errors are all reported together, and nothing is generated if there are any.
 
 Block configs live in the top-level `common_files/` directory. `unpack.py` creates `flowgen/configs/` with a link to each file in `common_files/`; re-run it with `--force` after adding a config. `common_files/` holds your golden configs on your own machine: it is never packed into `bundle.txt`, and `unpack.py` never touches it.
@@ -57,8 +58,10 @@ Block configs live in the top-level `common_files/` directory. `unpack.py` creat
 | `TOP_DESIGN` | yes | top module |
 | `FLOWS` | | flows to generate (default `rtl2syn`) |
 | `RTL_FORMAT` | | `sverilog` (default), `verilog`, `vhdl` |
+| `RTL_SEARCH_DIRS` | | directories searched for RTL file names |
 | `RTL_FILES` | yes | RTL files or `.f` lists |
 | `RTL_INCDIRS`, `RTL_DEFINES` | | include dirs, macros |
+| `SYN_SEARCH_DIRS` | | directories searched for netlist file names |
 | `SYN_FILES` | yes (rtl2syn) | synthesized netlist files or `.f` lists |
 | `APR_FILES` | | APR netlist files (for future flows) |
 | `SVF_FILE` | | synthesis guidance file |
@@ -73,225 +76,170 @@ Block configs live in the top-level `common_files/` directory. `unpack.py` creat
 | `ENV_SOURCE` | | cshrc files sourced by the run script |
 | `ENV_SETENV(NAME)` | | environment variables set by the run script |
 #@@END flowgen/README.md
-#@@FILE flowgen/configs/block_template.config.tcl mode=644 enc=text lines=216 eol=1 md5=996cb5a9bfb3991b2bd659154bbadf43
-# Block configuration template for flowgen.py
+#@@FILE flowgen/configs/block_template.config.tcl mode=644 enc=text lines=161 eol=1 md5=d54057b081eb3f1eea20562f5629bff8
+# Block config template for flowgen.py
+# Copy it to common_files/block.config.tcl and edit the values.
 #
-# This file lists every setting flowgen understands. Copy it to your golden
-# configs directory and fill it in, for example:
-#   common_files/block.config.tcl
+# Single value:
+# set NAME "value"
 #
-# How to write values
-#   Single value: set NAME "value"
-#   List:         set NAME {
-#                   "first item"
-#                   "second item"
-#                 }
-#   Not used:     set NAME ""  or  set NAME {}
+# List, one item per line:
+# set NAME {
+#   "item1"
+#   "item2"
+# }
 #
-# You can use your own helper variables (like PROJ_ROOT below) and
-# environment variables ($env(HOME)) inside values and list items.
-# Relative paths are relative to the directory this file really lives in
-# (common_files/), even when it is used through a flowgen/configs/ link.
-#
-# Generate the run directory with:
-#   flowgen.py configs/block.config.tcl
+# "" or {} means not used. $VARIABLES work inside values and lists.
+# Relative paths are relative to this file's directory (common_files/).
 
 
-# Project root directory. Helper only, not read by flowgen; use it to
-# shorten the paths below.
-# Example:
-#   set PROJ_ROOT "/proj/chip"
+# Project root. Helper for the paths below, not read by flowgen.
 set PROJ_ROOT "/proj/chip"
 
-
-# DESIGN
-
-# Name of the top-level design (the top module). Required.
-# Example:
-#   set TOP_DESIGN "block"
+# Top-level design (module) name. Required.
 set TOP_DESIGN "block"
 
-
-# FLOWS TO GENERATE
-
-# Which flows to generate. Default is rtl2syn (RTL against synthesized netlist).
-# Example:
-#   set FLOWS {
-#     "rtl2syn"
-#   }
+# Flows to generate. Default: rtl2syn (RTL vs synthesized netlist).
 set FLOWS {
   "rtl2syn"
 }
 
 
-# RTL (reference design)
+# RTL
 
-# Language of the RTL: "sverilog" (default), "verilog" or "vhdl".
-# Example:
-#   set RTL_FORMAT "sverilog"
+# RTL language: "sverilog" (default), "verilog" or "vhdl".
 set RTL_FORMAT "sverilog"
 
-# RTL source files. Required. Each item is either a source file or a
-# file list ending in .f (one file path per line, // or # for comments;
-# relative paths inside a .f file are relative to the .f file).
-# Example with files:
-#   set RTL_FILES {
-#     "$PROJ_ROOT/block/rtl/block_pkg.sv"
-#     "$PROJ_ROOT/block/rtl/block.sv"
-#   }
-# Example with a file list:
-#   set RTL_FILES {
-#     "$PROJ_ROOT/block/rtl/source.f"
-#   }
-set RTL_FILES {
-  "$PROJ_ROOT/block/rtl/source.f"
+# Directories searched, in order, for RTL files given without a full path,
+# in RTL_FILES and inside .f file lists.
+set RTL_SEARCH_DIRS {
+  "$PROJ_ROOT/block/rtl"
 }
 
-# Include directories for `include files. Optional. Not for vhdl.
+# RTL files or .f file lists. Required.
+# A .f file has one file per line; // and # start comments.
+# Example with files instead of a file list:
+# set RTL_FILES {
+#   "block_pkg.sv"
+#   "block.sv"
+# }
+set RTL_FILES {
+  "source.f"
+}
+
+# Include directories for `include files. Not for vhdl.
 # Example:
-#   set RTL_INCDIRS {
-#     "$PROJ_ROOT/block/rtl/include"
-#   }
+# set RTL_INCDIRS {
+#   "$PROJ_ROOT/block/rtl/include"
+# }
 set RTL_INCDIRS {}
 
-# Verilog macros to define, as NAME or NAME=VALUE. Optional. Not for vhdl.
+# Verilog macros, as NAME or NAME=VALUE. Not for vhdl.
 # Example:
-#   set RTL_DEFINES {
-#     "SYNTHESIS"
-#     "DATA_WIDTH=32"
-#   }
+# set RTL_DEFINES {
+#   "SYNTHESIS"
+#   "DATA_WIDTH=32"
+# }
 set RTL_DEFINES {}
 
 
 # NETLISTS
 
-# Synthesized netlist files (or .f file lists). Required for rtl2syn.
-# Example:
-#   set SYN_FILES {
-#     "$PROJ_ROOT/block/syn/outputs/block.syn.v"
-#   }
-set SYN_FILES {
-  "$PROJ_ROOT/block/syn/outputs/block.syn.v"
+# Directories searched, in order, for netlist files given without a full
+# path, in SYN_FILES and inside .f file lists.
+set SYN_SEARCH_DIRS {
+  "$PROJ_ROOT/block/syn/outputs"
 }
 
-# Place-and-route (APR) netlist files (or .f file lists). Optional.
-# Not used by rtl2syn; kept for netlist-to-APR checks and other flows.
+# Synthesized netlist files or .f file lists. Required for rtl2syn.
+set SYN_FILES {
+  "block.syn.v"
+}
+
+# Place-and-route netlist files or .f file lists. Not used by rtl2syn.
 # Example:
-#   set APR_FILES {
-#     "$PROJ_ROOT/block/apr/outputs/block.apr.v"
-#   }
+# set APR_FILES {
+#   "$PROJ_ROOT/block/apr/outputs/block.apr.v"
+# }
 set APR_FILES {}
 
 
-# SYNTHESIS GUIDANCE AND CONSTRAINTS
+# GUIDANCE AND CONSTRAINTS
 
-# SVF guidance file written by synthesis. Optional, but recommended for
-# Formality: it makes matching faster and more reliable.
-# Example:
-#   set SVF_FILE "$PROJ_ROOT/block/syn/outputs/block.svf"
+# SVF guidance file from synthesis. Recommended for Formality.
 set SVF_FILE "$PROJ_ROOT/block/syn/outputs/block.svf"
 
-# Timing constraint (SDC) files. Optional. Not used by Formality; kept for
-# synthesis, timing and other flows.
+# Timing constraint files. Not used by Formality.
 # Example:
-#   set SDC_FILES {
-#     "$PROJ_ROOT/block/constraints/block.sdc"
-#   }
+# set SDC_FILES {
+#   "$PROJ_ROOT/block/constraints/block.sdc"
+# }
 set SDC_FILES {}
 
-# Power intent (UPF) files. Optional. Not used by flowgen yet.
+# Power intent files. Not used by flowgen yet.
 # Example:
-#   set UPF_FILES {
-#     "$PROJ_ROOT/block/upf/block.upf"
-#   }
+# set UPF_FILES {
+#   "$PROJ_ROOT/block/upf/block.upf"
+# }
 set UPF_FILES {}
 
 
-# LIBRARIES AND SIMULATION MODELS
+# LIBRARIES
 
-# Format of the files in LIB_FILES: "db" (default) or "lib".
-#   "db"  reads compiled .db files (read_db).
-#   "lib" reads Liberty .lib or .lib.gz files (read_lib).
-# Example:
-#   set LIB_FORMAT "db"
+# Library file format: "db" (default, read_db) or "lib" (.lib or .lib.gz, read_lib).
 set LIB_FORMAT "db"
 
-# Technology library files: standard cells, memories, hard IPs. Required.
-# Give full file names; only these files are read.
-# Example:
-#   set LIB_FILES {
-#     "/pdk/stdcell/db/stdcell_tt_0p80v_25c.db"
-#     "/ip/sram/db/sram_1rw_tt_0p80v_25c.db"
-#   }
+# Library files: standard cells, memories, hard IPs. Required.
+# Only these exact files are read.
 set LIB_FILES {
   "/pdk/stdcell/db/stdcell_tt_0p80v_25c.db"
 }
 
-# Verilog simulation models (.v) for hard IPs, memories or cells that have
-# no library model. Optional. Read into both reference and implementation.
-# Items can also be .f file lists.
+# Verilog models for hard IPs or cells without a library model.
+# Read into both reference and implementation. Items can be .f lists.
 # Example:
-#   set SIM_FILES {
-#     "/ip/pll/verilog/pll_top.v"
-#   }
+# set SIM_FILES {
+#   "/ip/pll/verilog/pll_top.v"
+# }
 set SIM_FILES {}
 
-# Modules to treat as black boxes (only their ports are compared).
-# Optional. Nothing is black boxed unless it is listed here.
+# Modules to black box. Nothing is black boxed unless listed here.
 # Example:
-#   set BLACKBOX_MODULES {
-#     "pll_top"
-#     "sram_1rw"
-#   }
+# set BLACKBOX_MODULES {
+#   "pll_top"
+# }
 set BLACKBOX_MODULES {}
 
 
 # TOOL SETTINGS
-#
-# Settings for one tool are keyed by the tool name. Today flowgen
-# generates Formality only, so the tool name is "formality". New tools will
-# use their own name, for example "dc" or "primetime".
+# Keyed by tool name. Formality is "formality".
 
-# Command that starts the tool. Optional. Default for Formality: fm_shell
+# Command that starts the tool. Default: fm_shell
 # Example:
-#   set TOOL_CMD(formality) "/tools/synopsys/fm/V-2023.12/bin/fm_shell"
+# set TOOL_CMD(formality) "/tools/synopsys/fm/bin/fm_shell"
 
-# Tool variables, written into the tool script as set_app_var. Add any
-# Formality variable you need here, one line each. Optional.
-# synopsys_auto_setup is "true" unless you set it here.
-# Examples:
-#   set TOOL_SETTINGS(formality,hdlin_unresolved_modules) "black_box"
-#   set TOOL_SETTINGS(formality,verification_timeout_limit) "4:0:0"
-
-# Your own Tcl files, sourced at fixed points in the Formality script.
-# Optional. Hook points:
-#   setup        after the tool variables, before anything is read
-#   pre_match    designs read and top set (set_constant, set_user_match, ...)
-#   pre_verify   after matching
-#   post_verify  after verification (extra reports)
+# Tool variables, written as set_app_var. Add one line per variable.
+# synopsys_auto_setup is "true" unless set here.
 # Example:
-#   set TOOL_HOOKS(formality,pre_match) "$PROJ_ROOT/block/fm/constants.tcl"
+# set TOOL_SETTINGS(formality,hdlin_unresolved_modules) "black_box"
+
+# Your own Tcl files, sourced at: setup, pre_match, pre_verify, post_verify.
+# Example:
+# set TOOL_HOOKS(formality,pre_match) "$PROJ_ROOT/block/fm/constants.tcl"
 
 
 # RUN ENVIRONMENT
-#
-# Written into the run_<flow>.csh scripts before the tool starts.
+# Written into the run_<flow>.csh scripts.
 
-# Shell setup files to source, in order. Optional.
-# Example:
-#   set ENV_SOURCE {
-#     "/tools/synopsys/setup.cshrc"
-#   }
+# Shell setup files to source, in order.
 set ENV_SOURCE {
   "/tools/synopsys/setup.cshrc"
 }
 
-# Environment variables to set, one line each. Optional.
-# Example:
-#   set ENV_SETENV(SNPSLMD_LICENSE_FILE) "27020@lic-server1"
+# Environment variables to set, one line each.
 set ENV_SETENV(SNPSLMD_LICENSE_FILE) "27020@lic-server1"
 #@@END flowgen/configs/block_template.config.tcl
-#@@FILE flowgen/flowgen.py mode=755 enc=text lines=597 eol=1 md5=a86bcc2e1d07934c689851f7da06a1b9
+#@@FILE flowgen/flowgen.py mode=755 enc=text lines=649 eol=1 md5=2830784741129cedcf4bc9ec75a1c64a
 #!/usr/bin/env python3
 """flowgen - generate EDA run directories from a Tcl block config.
 
@@ -304,9 +252,10 @@ Arguments:
     CONFIG    The block config file to read, typically block.config.tcl
               (any name works). Usually given through the configs link
               directory, e.g. configs/block.config.tcl.
-    --force   Generate the run directory even if input files are missing
-              or a .f file list cannot be read. Those errors become
-              warnings. Use it to try out the flow before all design files
+    --force   Generate the run directory even if input files are missing,
+              a .f file list cannot be read, or a required file list
+              (RTL_FILES, SYN_FILES, LIB_FILES) is empty. Those errors
+              become warnings. Use it to try out the flow before all design files
               exist. Other config errors (missing settings, bad values,
               Tcl errors) still stop generation.
     -h        Show this help and exit.
@@ -360,8 +309,8 @@ FM = "formality"          # tool key in TOOL_SETTINGS / TOOL_CMD / TOOL_HOOKS
 # treated as a user helper variable.
 KNOWN_VARS = (
     "TOP_DESIGN", "FLOWS",
-    "RTL_FORMAT", "RTL_FILES", "RTL_INCDIRS", "RTL_DEFINES",
-    "SYN_FILES", "APR_FILES", "SVF_FILE", "SDC_FILES", "UPF_FILES",
+    "RTL_FORMAT", "RTL_SEARCH_DIRS", "RTL_FILES", "RTL_INCDIRS", "RTL_DEFINES",
+    "SYN_SEARCH_DIRS", "SYN_FILES", "APR_FILES", "SVF_FILE", "SDC_FILES", "UPF_FILES",
     "LIB_FORMAT", "LIB_FILES", "SIM_FILES", "BLACKBOX_MODULES",
     "TOOL_CMD", "TOOL_SETTINGS", "TOOL_HOOKS",
     "ENV_SOURCE", "ENV_SETENV",
@@ -416,6 +365,7 @@ class FileSet(object):
         self.files = []
         self.incdirs = []
         self.defines = []
+        self.unreadable = False    # a .f file list could not be read
 
 
 class Config(object):
@@ -424,6 +374,7 @@ class Config(object):
     def __init__(self, path, force=False):
         self.force = force
         self.forced = []      # file errors downgraded to warnings by --force
+        self.file_errors = False
         self.path = os.path.realpath(path)   # follow flowgen/configs links to common_files
         self.dir = os.path.dirname(self.path)
         self.errors = []
@@ -443,14 +394,14 @@ class Config(object):
 
         # Design data
         self.rtl_format = self.choice("RTL_FORMAT", RTL_READERS, default="sverilog")
-        self.rtl = self.fileset("RTL_FILES", required=True)
+        self.rtl = self.fileset("RTL_FILES", "RTL_SEARCH_DIRS", required=True)
         self.rtl.incdirs += self.paths("RTL_INCDIRS")
         self.rtl.defines += self.tcl_list("RTL_DEFINES")
         if self.rtl_format == "vhdl" and (self.rtl.incdirs or self.rtl.defines):
             self.errors.append("RTL_INCDIRS / RTL_DEFINES (or +incdir+/+define+ in a .f "
                                "file) only apply to verilog/sverilog")
         needs_syn = "rtl2syn" in self.flows
-        self.syn = self.fileset("SYN_FILES", required=needs_syn, netlist=True)
+        self.syn = self.fileset("SYN_FILES", "SYN_SEARCH_DIRS", required=needs_syn, netlist=True)
         self.apr = self.fileset("APR_FILES", netlist=True)        # for future flows
         self.svf = self.single_path("SVF_FILE")
         self.sdc = self.paths("SDC_FILES")                        # not used by Formality
@@ -458,7 +409,9 @@ class Config(object):
 
         # Libraries and simulation models
         self.lib_format = self.choice("LIB_FORMAT", LIB_READERS, default="db")
-        self.libs = self.paths("LIB_FILES", required=True)
+        self.libs = self.paths("LIB_FILES")
+        if not self.libs:
+            self.file_error("LIB_FILES is empty")
         if self.lib_format in LIB_EXTENSIONS:
             for lib in self.libs:
                 if not lib.endswith(LIB_EXTENSIONS[self.lib_format]):
@@ -497,6 +450,7 @@ class Config(object):
             self.forced.append(msg)
             self.warnings.append("%s (ignored: --force)" % msg)
         else:
+            self.file_errors = True
             self.errors.append(msg)
 
     # Typed getters
@@ -568,6 +522,28 @@ class Config(object):
             self.warnings.append("%s: file not found: %s" % (label, full))
         return full
 
+    def find(self, label, path, search, base=None):
+        """Locate a file: absolute as given; relative in the search dirs (in
+        order), then relative to base (default the config dir). Warn if missing."""
+        path = os.path.expanduser(path)
+        base = base or self.dir
+        if os.path.isabs(path) or not search:
+            return self.resolve(label, path, base)
+        candidates = [os.path.normpath(os.path.join(d, path)) for d in search]
+        candidates.append(os.path.normpath(os.path.join(base, path)))
+        found = []
+        for c in candidates:
+            if os.path.exists(c) and c not in found:
+                found.append(c)
+        if len(found) > 1:
+            self.warnings.append("%s: %s found in several places, using %s"
+                                 % (label, path, found[0]))
+        if found:
+            return found[0]
+        self.warnings.append("%s: file not found: %s (searched: %s)"
+                             % (label, path, ", ".join(search + [base])))
+        return candidates[-1]
+
     def paths(self, name, required=False):
         return [self.resolve(name, p) for p in self.tcl_list(name, required=required)]
 
@@ -577,38 +553,62 @@ class Config(object):
             self.errors.append("%s: give one file, got %d" % (name, len(items)))
         return items[0] if items else ""
 
-    def fileset(self, name, required=False, netlist=False):
-        """Files from a list variable; entries ending in .f are file lists."""
+    def fileset(self, name, search_var=None, required=False, netlist=False):
+        """Files from a list variable; entries ending in .f are file lists.
+        Relative names are looked up in the search_var directories."""
         result = FileSet()
-        items = self.paths(name, required=required)
+        search = []
+        if search_var:
+            search = self.paths(search_var)
+            for d in search:
+                if os.path.exists(d) and not os.path.isdir(d):
+                    self.errors.append("%s: not a directory: %s" % (search_var, d))
+        items = self.tcl_list(name)
+        if required and not items:
+            self.file_error("%s is empty" % name)
         for item in items:
             if item.endswith(".f"):
-                self.read_filelist(name, item, result, [])
+                self.read_filelist(name, item, result, [], search)
             else:
-                result.files.append(item)
+                result.files.append(self.find(name, item, search))
         if netlist and (result.incdirs or result.defines):
             self.warnings.append("%s: +incdir+/+define+ in a .f file ignored for netlists" % name)
             result.incdirs, result.defines = [], []
-        if required and items and not result.files:
+        if required and items and not result.files and not result.unreadable:
             self.file_error("%s: the .f file lists contain no files" % name)
+        unique = []
+        for f in result.files:           # a file listed twice is read once
+            if f not in unique:
+                unique.append(f)
+        result.files = unique
         return result
 
-    def read_filelist(self, name, path, result, stack):
+    def read_filelist(self, name, path, result, stack, search, base=None):
         """Expand a .f file: one path per line, // or # comments, $VAR expanded.
 
         Also understands -f/-F <file> (nested lists), -v <file>,
         +incdir+<dir>[+<dir>...] and +define+<MACRO>[=<value>][+...].
-        Relative paths are relative to the .f file's directory.
+        Relative file names are looked up in the search dirs, then relative
+        to the .f file's directory. +incdir+ dirs are relative to the .f file.
         """
         label = "%s (%s)" % (name, os.path.basename(path))
+        path = os.path.expanduser(path)
+        searched = ""
+        if not os.path.isabs(path):
+            dirs = search + [base or self.dir]
+            found = [os.path.join(d, path) for d in dirs if os.path.isfile(os.path.join(d, path))]
+            path = os.path.normpath(found[0] if found else os.path.join(base or self.dir, path))
+            searched = " (searched: %s)" % ", ".join(dirs)
         if path in stack:
             self.errors.append("%s: file list includes itself" % label)
             return
         try:
             with open(path) as fh:
                 lines = fh.readlines()
-        except (IOError, OSError) as exc:
-            self.file_error("%s: cannot read file list: %s" % (label, exc))
+        except (IOError, OSError):
+            result.unreadable = True
+            self.file_error("%s: file list not found or not readable: %s%s"
+                            % (label, path, searched))
             return
         base = os.path.dirname(path)
         for lineno, line in enumerate(lines, 1):
@@ -628,11 +628,11 @@ class Config(object):
                         self.warnings.append("%s: -y library directories are not supported, "
                                              "ignored: %s" % (where, tokens[i + 1]))
                     else:
-                        arg = self.resolve(where, tokens[i + 1], base)
                         if tok == "-v":
-                            result.files.append(arg)
+                            result.files.append(self.find(where, tokens[i + 1], search, base))
                         else:
-                            self.read_filelist(name, arg, result, stack + [path])
+                            self.read_filelist(name, tokens[i + 1], result, stack + [path],
+                                               search, base)
                     i += 2
                     continue
                 if tok.startswith("+incdir+"):
@@ -643,7 +643,7 @@ class Config(object):
                 elif tok.startswith(("-", "+")):
                     self.warnings.append("%s: option %s not supported, ignored" % (where, tok))
                 else:
-                    result.files.append(self.resolve(where, tok, base))
+                    result.files.append(self.find(where, tok, search, base))
                 i += 1
 
 
@@ -829,8 +829,8 @@ def main(argv=None):
     parser.add_argument("config", metavar="CONFIG",
                         help="block config file, typically block.config.tcl")
     parser.add_argument("--force", action="store_true",
-                        help="generate even if input files are missing or a .f file "
-                             "list cannot be read (those errors become warnings)")
+                        help="generate even if input files are missing or required file "
+                             "lists are empty (those errors become warnings)")
     args = parser.parse_args(argv)
 
     if not os.path.isfile(args.config):
@@ -847,8 +847,8 @@ def main(argv=None):
         for msg in cfg.errors:
             print("flowgen: ERROR: %s" % msg)
         hint = ""
-        if not args.force and any("file list" in m for m in cfg.errors):
-            hint = " Use --force to generate anyway with missing files."
+        if not args.force and cfg.file_errors:
+            hint = " Use --force to generate anyway with missing or empty file lists."
         sys.exit("flowgen: %d error(s) in %s; nothing generated.%s"
                  % (len(cfg.errors), cfg.path, hint))
 
@@ -1017,7 +1017,7 @@ def main(argv=None):
 if __name__ == "__main__":
     sys.exit(main())
 #@@END pack.py
-#@@FILE session.md mode=644 enc=text lines=217 eol=1 md5=3cf3876077c86748d5fa686d4692241b
+#@@FILE session.md mode=644 enc=text lines=226 eol=1 md5=0aa67d29b28f537d0aaac63dfaf3bf21
 # Session handoff: flowgen (EDA flow generator)
 
 Paste this file into a new Claude Code session (or keep it in the repo root)
@@ -1111,6 +1111,7 @@ flowgen.py [--force] CONFIG
 - CONFIG: block config, typically block.config.tcl (any name works),
   usually given as configs/block.config.tcl.
 - --force: missing or unreadable input files (e.g. a missing .f list)
+  and empty required file lists (RTL_FILES, SYN_FILES, LIB_FILES)
   become warnings and the run directory is generated anyway; the ignored
   problems are listed in the generated script header. Other config
   errors (missing settings, bad values, Tcl errors) still stop it.
@@ -1147,11 +1148,17 @@ How it works:
   comments, $VAR from the environment, relative to the .f file. Supports
   nested -f/-F, -v, +incdir+, +define+. -y and other options are ignored
   with a warning.
+- Relative file names in RTL_FILES/SYN_FILES and their .f lists (and .f
+  files themselves) are looked up in RTL_SEARCH_DIRS/SYN_SEARCH_DIRS in
+  order, then next to the config or .f file. First match wins (warning if
+  found in several). Duplicate files are read once.
 
 ## Config style (block.config.tcl)
 
-- Human-readable comments, each setting with an "Example:" block.
-  No decorative separator characters.
+- Short human-readable comments. "Example:" blocks only where the
+  setting starts empty or commented out; examples aligned flush with "#"
+  (`# set NAME {` / `#   "item"` / `# }`). No decorative separators,
+  no bloat.
 - Single values in double quotes: `set TOP_DESIGN "block"`.
 - Lists in braces, one double-quoted item per line, 2-space indent:
   ```
@@ -1169,8 +1176,10 @@ Settings:
 | TOP_DESIGN | yes | top module |
 | FLOWS | | flows to generate, default rtl2syn |
 | RTL_FORMAT | | sverilog (default), verilog, vhdl |
+| RTL_SEARCH_DIRS | | dirs searched (in order) for RTL file names |
 | RTL_FILES | yes | RTL files or .f lists |
 | RTL_INCDIRS, RTL_DEFINES | | include dirs, macros (not for vhdl) |
+| SYN_SEARCH_DIRS | | dirs searched (in order) for netlist file names |
 | SYN_FILES | yes for rtl2syn | synthesized netlist files or .f lists |
 | APR_FILES | | APR netlist (future flows) |
 | SVF_FILE | | synthesis guidance |
