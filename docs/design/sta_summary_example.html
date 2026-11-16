@@ -41,6 +41,7 @@
        font-variant-numeric: tabular-nums; }
   td.sc, th.sc { text-align: left; font-family: Inter, system-ui, sans-serif; font-size: 13px; }
   td.sc .m { color: var(--ink-muted); }
+  th .u { font-weight: 400; color: var(--ink-muted); }
   .neg { color: var(--fail); font-weight: 600; }
   .zero { color: var(--ink-muted); }
   td.st { text-align: center; font-family: Inter, system-ui, sans-serif; font-weight: 600; font-size: 12px; }
@@ -66,8 +67,8 @@
         <th class="grp" rowspan="2">Status</th>
       </tr>
       <tr>
-        <th class="grp">WNS</th><th>TNS</th><th>NVP</th>
-        <th class="grp">WNS</th><th>TNS</th><th>NVP</th>
+        <th class="grp">WNS <span class="u">(ns)</span></th><th>TNS <span class="u">(ns)</span></th><th>NVP</th>
+        <th class="grp">WNS <span class="u">(ns)</span></th><th>TNS <span class="u">(ns)</span></th><th>NVP</th>
       </tr>
     </thead>
     <tbody>
