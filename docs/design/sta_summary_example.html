@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>STA Timing Summary</title>
+<title>d2d_ctrl_top STA summary</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
   :root {
@@ -40,7 +40,7 @@
   td { text-align: right; font: 400 12.5px/1.35 "JetBrains Mono", "SF Mono", Menlo, monospace;
        font-variant-numeric: tabular-nums; }
   td.sc, th.sc { text-align: left; font-family: Inter, system-ui, sans-serif; font-size: 13px; }
-  td.sc .m { color: var(--ink-muted); }
+  .m { font-weight: 400; color: var(--ink-muted); }
   th .u { font-weight: 400; color: var(--ink-muted); }
   .neg { color: var(--fail); font-weight: 600; }
   .zero { color: var(--ink-muted); }
@@ -61,7 +61,7 @@
   <table>
     <thead>
       <tr>
-        <th class="sc" rowspan="2">Scenario <span style="font-weight:400;color:var(--ink-muted)">mode · corner</span></th>
+        <th class="sc" rowspan="2">Scenario <span class="m">mode · corner</span></th>
         <th class="grp" colspan="3">Setup</th>
         <th class="grp" colspan="3">Hold</th>
         <th class="grp" rowspan="2">Status</th>
