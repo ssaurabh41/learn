@@ -11,14 +11,14 @@
     --ink: #1f2328; --ink-muted: #6b7280;
     --rule: #3f4651;  /* structural lines only */
     --grid: #dcdfe3;  /* inner cell grid */
-    --fail: #b42318; --warn: #8a6100; --pass: #6b7280;
+    --fail: #b42318; --pass: #1a7f37;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #16181b; --bg-head: #1f2226; --bg-hover: #1b1e21;
       --ink: #e6e8eb; --ink-muted: #9aa1ab;
       --rule: #8b929c; --grid: #33373d;
-      --fail: #f07167; --warn: #d9a441; --pass: #9aa1ab;
+      --fail: #f07167; --pass: #57c26a;
     }
   }
   * { box-sizing: border-box; }
@@ -45,8 +45,7 @@
   .zero { color: var(--ink-muted); }
   td.st { text-align: center; font-family: Inter, system-ui, sans-serif; font-weight: 600; font-size: 12px; }
   .st.fail { color: var(--fail); }
-  .st.warn { color: var(--warn); }
-  .st.pass { color: var(--pass); font-weight: 500; }
+  .st.pass { color: var(--pass); }
   tbody tr:hover td { background: var(--bg-hover); }
   tr.worst td { border-top: 2px solid var(--rule); font-weight: 600; background: var(--bg-head); }
 </style>
@@ -56,8 +55,6 @@
   <div class="meta">
     <b>d2d_ctrl_top</b>
     <span>run <code>sta_signoff_r42</code></span>
-    <span>netlist <code>ctrl@v2.0-rc3</code></span>
-    <span>8 scenarios · units ns</span>
   </div>
   <div class="wrap">
   <table>
@@ -66,52 +63,50 @@
         <th class="sc" rowspan="2">Scenario <span style="font-weight:400;color:var(--ink-muted)">mode · corner</span></th>
         <th class="grp" colspan="3">Setup</th>
         <th class="grp" colspan="3">Hold</th>
-        <th class="grp" colspan="2">DRV</th>
         <th class="grp" rowspan="2">Status</th>
       </tr>
       <tr>
         <th class="grp">WNS</th><th>TNS</th><th>NVP</th>
         <th class="grp">WNS</th><th>TNS</th><th>NVP</th>
-        <th class="grp">Tran</th><th>Cap</th>
       </tr>
     </thead>
     <tbody>
       <tr><td class="sc">func <span class="m">· ssg_0p675v_m40c_cworst</span></td>
           <td class="grp neg">-0.042</td><td class="neg">-1.318</td><td class="neg">57</td>
           <td class="grp">0.018</td><td class="zero">0</td><td class="zero">0</td>
-          <td class="grp neg">3</td><td class="zero">0</td><td class="st fail">FAIL</td></tr>
+          <td class="grp st fail">FAIL</td></tr>
       <tr><td class="sc">func <span class="m">· ssg_0p675v_125c_rcworst</span></td>
           <td class="grp neg">-0.011</td><td class="neg">-0.087</td><td class="neg">9</td>
           <td class="grp">0.022</td><td class="zero">0</td><td class="zero">0</td>
-          <td class="grp zero">0</td><td class="zero">0</td><td class="st fail">FAIL</td></tr>
+          <td class="grp st fail">FAIL</td></tr>
       <tr><td class="sc">func <span class="m">· tt_0p750v_25c_typical</span></td>
           <td class="grp">0.064</td><td class="zero">0</td><td class="zero">0</td>
           <td class="grp">0.031</td><td class="zero">0</td><td class="zero">0</td>
-          <td class="grp zero">0</td><td class="zero">0</td><td class="st pass">PASS</td></tr>
+          <td class="grp st pass">PASS</td></tr>
       <tr><td class="sc">func <span class="m">· ffg_0p825v_m40c_cbest</span></td>
           <td class="grp">0.211</td><td class="zero">0</td><td class="zero">0</td>
           <td class="grp neg">-0.006</td><td class="neg">-0.019</td><td class="neg">4</td>
-          <td class="grp zero">0</td><td class="zero">0</td><td class="st fail">FAIL</td></tr>
+          <td class="grp st fail">FAIL</td></tr>
       <tr><td class="sc">func <span class="m">· ffg_0p825v_125c_rcbest</span></td>
           <td class="grp">0.188</td><td class="zero">0</td><td class="zero">0</td>
           <td class="grp">0.003</td><td class="zero">0</td><td class="zero">0</td>
-          <td class="grp zero">0</td><td class="zero">0</td><td class="st warn">MARGIN</td></tr>
+          <td class="grp st pass">PASS</td></tr>
       <tr><td class="sc">scan_shift <span class="m">· ssg_0p675v_m40c_cworst</span></td>
           <td class="grp">0.512</td><td class="zero">0</td><td class="zero">0</td>
           <td class="grp">0.012</td><td class="zero">0</td><td class="zero">0</td>
-          <td class="grp zero">0</td><td class="zero">0</td><td class="st pass">PASS</td></tr>
+          <td class="grp st pass">PASS</td></tr>
       <tr><td class="sc">scan_shift <span class="m">· ffg_0p825v_m40c_cbest</span></td>
           <td class="grp">0.940</td><td class="zero">0</td><td class="zero">0</td>
           <td class="grp neg">-0.014</td><td class="neg">-0.402</td><td class="neg">38</td>
-          <td class="grp zero">0</td><td class="zero">0</td><td class="st fail">FAIL</td></tr>
+          <td class="grp st fail">FAIL</td></tr>
       <tr><td class="sc">scan_cap <span class="m">· ssg_0p675v_m40c_cworst</span></td>
           <td class="grp">0.097</td><td class="zero">0</td><td class="zero">0</td>
           <td class="grp">0.015</td><td class="zero">0</td><td class="zero">0</td>
-          <td class="grp zero">0</td><td class="neg">1</td><td class="st fail">FAIL</td></tr>
+          <td class="grp st pass">PASS</td></tr>
       <tr class="worst"><td class="sc">Worst across scenarios</td>
           <td class="grp neg">-0.042</td><td class="neg">-1.405</td><td class="neg">66</td>
           <td class="grp neg">-0.014</td><td class="neg">-0.421</td><td class="neg">42</td>
-          <td class="grp neg">3</td><td class="neg">1</td><td class="st fail">FAIL</td></tr>
+          <td class="grp st fail">FAIL</td></tr>
     </tbody>
   </table>
   </div>
