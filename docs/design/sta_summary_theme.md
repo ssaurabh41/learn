@@ -1,4 +1,4 @@
-# STA Summary Table — Theme Spec ("Gold ledger")
+# STA Summary Table — Theme Spec ("Gold ledger", neutral)
 
 Purpose: one compact table that summarizes STA timing reports across scenarios, so a
 reviewer can see in seconds what fails, where, and by how much. Everything else is noise.
@@ -36,31 +36,33 @@ Reference render: `sta_summary_example.html` / `sta_summary_example.png`.
 
 ## 3. Color tokens
 
+Neutral greys carry the page; gold is used **only** for structural lines; red only for violations.
+
 ```css
 :root {
-  --bg: #ffffff;        --bg-head: #fbf6e6;   --bg-hover: #fdf9ee;
-  --ink: #1c1b18;       --ink-muted: #6b675c;
-  --gold: #b8912f;      /* outer border, group dividers, header underline */
-  --gold-soft: #e4d3a1; /* inner cell grid */
-  --fail: #b3261e;  --fail-bg: #fbeceb;  --warn: #8a5a00;  --pass: #2e6b3a;
+  --bg: #ffffff;       --bg-head: #f4f5f6;  --bg-hover: #f9fafb;
+  --ink: #1f2328;      --ink-muted: #6b7280;
+  --gold: #9c7c2e;     /* structural lines only */
+  --grid: #dcdfe3;     /* inner cell grid */
+  --fail: #b42318;     --warn: #8a6100;     --pass: #6b7280;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #17160f; --bg-head: #221f14; --bg-hover: #2a2618;
-    --ink: #f2efe6; --ink-muted: #a39e8f;
-    --gold: #d4ad4a; --gold-soft: #4a4026;
-    --fail: #f08a80; --fail-bg: #3a1d1a; --warn: #e0b45c; --pass: #8fcf98;
+    --bg: #16181b; --bg-head: #1f2226; --bg-hover: #1b1e21;
+    --ink: #e6e8eb; --ink-muted: #9aa1ab;
+    --gold: #b8954a; --grid: #33373d;
+    --fail: #f07167; --warn: #d9a441; --pass: #9aa1ab;
   }
 }
 ```
 
 ## 4. Borders (the signature of this theme)
 
-- Outer table border: **2px `--gold`**.
-- Inner cell grid: **1px `--gold-soft`** (full grid, so values can be traced across).
-- Column-group dividers (before Setup, Hold, DRV, Status): **2px `--gold`**.
-- Header bottom: **2px `--gold`**. Worst row top: **2px `--gold`**.
-- No rounded corners, no shadows.
+- Gold lines (2px `--gold`): outer table border, column-group dividers (before Setup,
+  Hold, DRV, Status), header bottom (full width, including rowspan cells), worst-row top.
+- Everything else: 1px `--grid` neutral grey.
+- Keep gold at 2px. At 1px it ties with the grey grid in `border-collapse` and disappears.
+- No rounded corners, no shadows, no fills except `--bg-head` on header and worst row.
 
 ## 5. Cells
 
@@ -71,8 +73,9 @@ Reference render: `sta_summary_example.html` / `sta_summary_example.png`.
 - **Violation** (negative slack, NVP > 0, DRV > 0): `--fail`, weight 600.
 - **Zero counts / zero TNS**: `0` in `--ink-muted`, so non-zero values stand out.
 - Positive slack: plain `--ink`.
-- Status cell: centered, 600, uppercase word. FAIL = `--fail` on `--fail-bg`;
-  MARGIN = `--warn`; PASS = `--pass`. The word carries the meaning, so color is never the only cue.
+- Status cell: centered uppercase word, text color only (no cell fill).
+  FAIL = `--fail` 600; MARGIN = `--warn` 600; PASS = `--pass` (grey) 500.
+  PASS is deliberately quiet; the eye should land on what needs action.
 - Worst row: weight 600, background `--bg-head`.
 - Row hover: `--bg-hover`.
 
@@ -86,7 +89,7 @@ Reference render: `sta_summary_example.html` / `sta_summary_example.png`.
 
 - No title block, footer, legend, logo, or generation timestamp.
 - No zebra striping, gradients, icons, or emoji.
-- No color on positive values, and no more than one fill color (`--fail-bg`).
+- No color on positive values or PASS; no colored cell fills; no green.
 
 ## 8. Checklist
 
