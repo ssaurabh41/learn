@@ -1,4 +1,4 @@
-# STA Summary Table — Theme Spec ("Gold ledger", neutral)
+# STA Summary Table — Theme Spec ("Ledger")
 
 Purpose: one compact table that summarizes STA timing reports across scenarios, so a
 reviewer can see in seconds what fails, where, and by how much. Everything else is noise.
@@ -36,13 +36,13 @@ Reference render: `sta_summary_example.html` / `sta_summary_example.png`.
 
 ## 3. Color tokens
 
-Neutral greys carry the page; gold is used **only** for structural lines; red only for violations.
+Neutral greys carry the page; charcoal is used **only** for structural lines; red only for violations.
 
 ```css
 :root {
   --bg: #ffffff;       --bg-head: #f4f5f6;  --bg-hover: #f9fafb;
   --ink: #1f2328;      --ink-muted: #6b7280;
-  --gold: #9c7c2e;     /* structural lines only */
+  --rule: #3f4651;     /* structural lines only, charcoal */
   --grid: #dcdfe3;     /* inner cell grid */
   --fail: #b42318;     --warn: #8a6100;     --pass: #6b7280;
 }
@@ -50,7 +50,7 @@ Neutral greys carry the page; gold is used **only** for structural lines; red on
   :root:not([data-theme="light"]) {
     --bg: #16181b; --bg-head: #1f2226; --bg-hover: #1b1e21;
     --ink: #e6e8eb; --ink-muted: #9aa1ab;
-    --gold: #b8954a; --grid: #33373d;
+    --rule: #8b929c; --grid: #33373d;
     --fail: #f07167; --warn: #d9a441; --pass: #9aa1ab;
   }
 }
@@ -58,10 +58,10 @@ Neutral greys carry the page; gold is used **only** for structural lines; red on
 
 ## 4. Borders (the signature of this theme)
 
-- Gold lines (2px `--gold`): outer table border, column-group dividers (before Setup,
+- Structural lines (2px `--rule`): outer table border, column-group dividers (before Setup,
   Hold, DRV, Status), header bottom (full width, including rowspan cells), worst-row top.
 - Everything else: 1px `--grid` neutral grey.
-- Keep gold at 2px. At 1px it ties with the grey grid in `border-collapse` and disappears.
+- Keep structural lines at 2px. At 1px it ties with the grey grid in `border-collapse` and disappears.
 - No rounded corners, no shadows, no fills except `--bg-head` on header and worst row.
 
 ## 5. Cells
