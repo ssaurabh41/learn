@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STA Timing Summary</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  :root {
+    --bg: #ffffff; --bg-head: #fbf6e6; --bg-hover: #fdf9ee;
+    --ink: #1c1b18; --ink-muted: #6b675c;
+    --gold: #b8912f; --gold-soft: #e4d3a1;
+    --fail: #b3261e; --fail-bg: #fbeceb; --warn: #8a5a00; --pass: #2e6b3a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17160f; --bg-head: #221f14; --bg-hover: #2a2618;
+      --ink: #f2efe6; --ink-muted: #a39e8f;
+      --gold: #d4ad4a; --gold-soft: #4a4026;
+      --fail: #f08a80; --fail-bg: #3a1d1a; --warn: #e0b45c; --pass: #8fcf98;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 400 13px/1.35 Inter, system-ui, sans-serif; }
+  main { padding: 20px 16px; max-width: 1040px; margin: 0 auto; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; margin-bottom: 10px; }
+  .meta b { font-size: 15px; font-weight: 600; }
+  .meta span { color: var(--ink-muted); }
+  .meta code { color: var(--ink); }
+  .wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; border: 2px solid var(--gold); }
+  th, td { padding: 5px 10px; border: 1px solid var(--gold-soft); white-space: nowrap; }
+  thead th { background: var(--bg-head); font-weight: 600; text-align: center;
+             border-bottom: 2px solid var(--gold); }
+  thead tr:first-child th { border-bottom: 1px solid var(--gold-soft); }
+  .grp { border-left: 2px solid var(--gold); }
+  td { text-align: right; font: 400 12.5px/1.35 "JetBrains Mono", "SF Mono", Menlo, monospace;
+       font-variant-numeric: tabular-nums; }
+  td.sc, th.sc { text-align: left; font-family: Inter, system-ui, sans-serif; font-size: 13px; }
+  td.sc .m { color: var(--ink-muted); }
+  .neg { color: var(--fail); font-weight: 600; }
+  .zero { color: var(--ink-muted); }
+  td.st { text-align: center; font-family: Inter, system-ui, sans-serif; font-weight: 600; font-size: 12px; }
+  .st.fail { color: var(--fail); background: var(--fail-bg); }
+  .st.warn { color: var(--warn); }
+  .st.pass { color: var(--pass); }
+  tbody tr:hover td { background: var(--bg-hover); }
+  tr.worst td { border-top: 2px solid var(--gold); font-weight: 600; background: var(--bg-head); }
+</style>
+</head>
+<body>
+<main>
+  <div class="meta">
+    <b>d2d_ctrl_top</b>
+    <span>run <code>sta_signoff_r42</code></span>
+    <span>netlist <code>ctrl@v2.0-rc3</code></span>
+    <span>8 scenarios · units ns</span>
+  </div>
+  <div class="wrap">
+  <table>
+    <thead>
+      <tr>
+        <th class="sc" rowspan="2">Scenario <span style="font-weight:400;color:var(--ink-muted)">mode · corner</span></th>
+        <th class="grp" colspan="3">Setup</th>
+        <th class="grp" colspan="3">Hold</th>
+        <th class="grp" colspan="2">DRV</th>
+        <th class="grp" rowspan="2">Status</th>
+      </tr>
+      <tr>
+        <th class="grp">WNS</th><th>TNS</th><th>NVP</th>
+        <th class="grp">WNS</th><th>TNS</th><th>NVP</th>
+        <th class="grp">Tran</th><th>Cap</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="sc">func <span class="m">· ssg_0p675v_m40c_cworst</span></td>
+          <td class="grp neg">-0.042</td><td class="neg">-1.318</td><td class="neg">57</td>
+          <td class="grp">0.018</td><td class="zero">0</td><td class="zero">0</td>
+          <td class="grp neg">3</td><td class="zero">0</td><td class="st fail">FAIL</td></tr>
+      <tr><td class="sc">func <span class="m">· ssg_0p675v_125c_rcworst</span></td>
+          <td class="grp neg">-0.011</td><td class="neg">-0.087</td><td class="neg">9</td>
+          <td class="grp">0.022</td><td class="zero">0</td><td class="zero">0</td>
+          <td class="grp zero">0</td><td class="zero">0</td><td class="st fail">FAIL</td></tr>
+      <tr><td class="sc">func <span class="m">· tt_0p750v_25c_typical</span></td>
+          <td class="grp">0.064</td><td class="zero">0</td><td class="zero">0</td>
+          <td class="grp">0.031</td><td class="zero">0</td><td class="zero">0</td>
+          <td class="grp zero">0</td><td class="zero">0</td><td class="st pass">PASS</td></tr>
+      <tr><td class="sc">func <span class="m">· ffg_0p825v_m40c_cbest</span></td>
+          <td class="grp">0.211</td><td class="zero">0</td><td class="zero">0</td>
+          <td class="grp neg">-0.006</td><td class="neg">-0.019</td><td class="neg">4</td>
+          <td class="grp zero">0</td><td class="zero">0</td><td class="st fail">FAIL</td></tr>
+      <tr><td class="sc">func <span class="m">· ffg_0p825v_125c_rcbest</span></td>
+          <td class="grp">0.188</td><td class="zero">0</td><td class="zero">0</td>
+          <td class="grp">0.003</td><td class="zero">0</td><td class="zero">0</td>
+          <td class="grp zero">0</td><td class="zero">0</td><td class="st warn">MARGIN</td></tr>
+      <tr><td class="sc">scan_shift <span class="m">· ssg_0p675v_m40c_cworst</span></td>
+          <td class="grp">0.512</td><td class="zero">0</td><td class="zero">0</td>
+          <td class="grp">0.012</td><td class="zero">0</td><td class="zero">0</td>
+          <td class="grp zero">0</td><td class="zero">0</td><td class="st pass">PASS</td></tr>
+      <tr><td class="sc">scan_shift <span class="m">· ffg_0p825v_m40c_cbest</span></td>
+          <td class="grp">0.940</td><td class="zero">0</td><td class="zero">0</td>
+          <td class="grp neg">-0.014</td><td class="neg">-0.402</td><td class="neg">38</td>
+          <td class="grp zero">0</td><td class="zero">0</td><td class="st fail">FAIL</td></tr>
+      <tr><td class="sc">scan_cap <span class="m">· ssg_0p675v_m40c_cworst</span></td>
+          <td class="grp">0.097</td><td class="zero">0</td><td class="zero">0</td>
+          <td class="grp">0.015</td><td class="zero">0</td><td class="zero">0</td>
+          <td class="grp zero">0</td><td class="neg">1</td><td class="st fail">FAIL</td></tr>
+      <tr class="worst"><td class="sc">Worst across scenarios</td>
+          <td class="grp neg">-0.042</td><td class="neg">-1.405</td><td class="neg">66</td>
+          <td class="grp neg">-0.014</td><td class="neg">-0.421</td><td class="neg">42</td>
+          <td class="grp neg">3</td><td class="neg">1</td><td class="st fail">FAIL</td></tr>
+    </tbody>
+  </table>
+  </div>
+</main>
+</body>
+</html>
