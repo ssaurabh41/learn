@@ -1,8 +1,12 @@
 # Block configuration template for flowgen.py
 #
-# This file lists every setting flowgen understands. Copy it to your golden
-# configs directory and fill it in, for example:
-#   common_files/block.config.tcl
+# This file is the reference: it lists every setting flowgen understands.
+# You do not need to copy it. Start a block with
+#   runflowgen.sh --new <block>
+# which creates a short common_files/<block>.config.tcl (and, the first
+# time, common_files/project.config.tcl with the settings shared by all
+# blocks). Then copy from here only the settings you need. A setting can
+# go in the project config (all blocks) or in a block config (one block).
 #
 # How to write values
 #   Single value: set NAME "value"
@@ -14,18 +18,24 @@
 #
 # You can use your own helper variables (like PROJ_ROOT below) and
 # environment variables ($env(HOME)) inside values and list items.
-# Relative paths are relative to the directory this file really lives in
-# (common_files/), even when it is used through a flowgen/configs/ link.
+# Relative paths are relative to the directory the config file is in
+# (common_files/).
 #
 # Generate the run directory with:
-#   flowgen.py configs/block.config.tcl
+#   runflowgen.sh <block>
 
 
 # Project root directory. Helper only, not read by flowgen; use it to
-# shorten the paths below.
+# shorten the paths below. Normally set once in project.config.tcl.
 # Example:
 #   set PROJ_ROOT "/proj/chip"
 set PROJ_ROOT "/proj/chip"
+
+# Name of the block's directory under $PROJ_ROOT. Helper only, not read
+# by flowgen; the paths below are built from it.
+# Example:
+#   set BLOCK "block"
+set BLOCK "block"
 
 
 # DESIGN
@@ -57,7 +67,8 @@ set RTL_FORMAT "sverilog"
 
 # RTL source files. Required. Each item is either a source file or a
 # file list ending in .f (one file path per line, // or # for comments;
-# relative paths inside a .f file are relative to the .f file).
+# relative paths inside a .f file are relative to the .f file; $VAR inside
+# a .f file is an environment variable).
 # Example with files:
 #   set RTL_FILES {
 #     "$PROJ_ROOT/block/rtl/block_pkg.sv"
@@ -68,7 +79,7 @@ set RTL_FORMAT "sverilog"
 #     "$PROJ_ROOT/block/rtl/source.f"
 #   }
 set RTL_FILES {
-  "$PROJ_ROOT/block/rtl/source.f"
+  "$PROJ_ROOT/$BLOCK/rtl/source.f"
 }
 
 # Include directories for `include files. Optional. Not for vhdl.
@@ -95,7 +106,7 @@ set RTL_DEFINES {}
 #     "$PROJ_ROOT/block/syn/outputs/block.syn.v"
 #   }
 set SYN_FILES {
-  "$PROJ_ROOT/block/syn/outputs/block.syn.v"
+  "$PROJ_ROOT/$BLOCK/syn/outputs/$TOP_DESIGN.syn.v"
 }
 
 # Place-and-route (APR) netlist files (or .f file lists). Optional.
@@ -113,7 +124,7 @@ set APR_FILES {}
 # Formality: it makes matching faster and more reliable.
 # Example:
 #   set SVF_FILE "$PROJ_ROOT/block/syn/outputs/block.svf"
-set SVF_FILE "$PROJ_ROOT/block/syn/outputs/block.svf"
+set SVF_FILE "$PROJ_ROOT/$BLOCK/syn/outputs/$TOP_DESIGN.svf"
 
 # Timing constraint (SDC) files. Optional. Not used by Formality; kept for
 # synthesis, timing and other flows.
@@ -201,16 +212,18 @@ set BLACKBOX_MODULES {}
 #
 # Written into the run_<flow>.csh scripts before the tool starts.
 
-# Shell setup files to source, in order. Optional.
+# Shell setup files to source, in order. Optional. Arguments may follow
+# the file name.
 # Example:
 #   set ENV_SOURCE {
 #     "/tools/synopsys/setup.cshrc"
+#     "/tools/synopsys/fm_setup.cshrc -v 2023.12"
 #   }
-set ENV_SOURCE {
-  "/tools/synopsys/setup.cshrc"
-}
+set ENV_SOURCE {}
 
-# Environment variables to set, one line each. Optional.
-# Example:
+# Environment variables to set, one line each, set in this order after
+# ENV_SOURCE. Optional. To use another environment variable in a value,
+# write the value in braces: it is expanded when the run script runs.
+# Examples:
 #   set ENV_SETENV(SNPSLMD_LICENSE_FILE) "27020@lic-server1"
-set ENV_SETENV(SNPSLMD_LICENSE_FILE) "27020@lic-server1"
+#   set ENV_SETENV(PATH) {/tools/synopsys/fm/bin:$PATH}

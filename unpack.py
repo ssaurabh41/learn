@@ -4,18 +4,17 @@
 Usage:
     unpack.py BUNDLE [-d DIR] [--force] [--list]
 
-Files are written under DIR (default: current directory). Then the
-directory flowgen/configs/ (which holds block_template.config.tcl from the
-bundle) gets one link per file in your local DIR/common_files/ (the golden
-block configs):
-    flowgen/configs/<name> -> ../../common_files/<name>
-Re-run unpack (with --force) to pick up configs added to common_files/ later.
+Files are written under DIR (default: current directory). Your block
+configs live in DIR/common_files/, next to flowgen/; flowgen reads them
+from there, so unpack never has to be run again for a new config.
 
 If a top-level directory from the bundle (flowgen/) already exists in DIR,
 unpack stops with an error and changes nothing. With --force that directory
 is removed first and recreated from the bundle, so no stale files are left
-behind. Nothing else in DIR is removed: common_files/ is never in a bundle
-and is never touched. Top-level files (pack.py, unpack.py) are overwritten.
+behind. If it holds files of your own (anything that is not in the bundle,
+e.g. run directories), it is not deleted but renamed to flowgen.old_<date>_<time>. Nothing else in DIR is removed:
+common_files/ is never in a bundle and is never touched. Top-level files
+(pack.py, unpack.py) are overwritten.
 
 Every file is checked against its MD5 before anything is written; a damaged
 bundle writes nothing.
@@ -26,6 +25,7 @@ Python 3.6+, standard library only.
 import argparse
 import base64
 import binascii
+import datetime
 import hashlib
 import os
 import re
@@ -33,7 +33,9 @@ import shutil
 import sys
 
 CONFIG_SRC = "common_files"          # local golden configs (never in a bundle)
-CONFIG_LINK_DIR = "flowgen/configs"   # created by unpack, one link per config
+
+PROTECTED_TOPS = (CONFIG_SRC, ".git")  # a bundle may never write here
+PATH_RE = re.compile(r"^[A-Za-z0-9._+-]+(/[A-Za-z0-9._+-]+)*\Z")
 
 HEADER_RE = re.compile(r"^#@@FILE (\S+) mode=([0-7]{3}) enc=(text|b64) lines=(\d+) "
                        r"eol=([01]) md5=([0-9a-f]{32})$")
@@ -64,7 +66,7 @@ def parse(bundle_path):
         raise BundleError("not a pack.py bundle, or made by a different pack.py version "
                           "(first line must be '#@@PACK 3')")
 
-    files, i = [], 1
+    files, seen, i = [], set(), 1
     while i < len(lines):
         if lines[i].strip() == "":
             i += 1                      # tolerate blank lines between files
@@ -75,6 +77,9 @@ def parse(bundle_path):
         path, mode, enc, count, eol, md5 = m.groups()
         count = int(count)
         check_path(path, i)
+        if path in seen:
+            raise BundleError("line %d: file is in the bundle twice: %s" % (i + 1, path))
+        seen.add(path)
 
         body = lines[i + 1:i + 1 + count]
         end = i + 1 + count
@@ -92,36 +97,39 @@ def parse(bundle_path):
             raise BundleError("%s: MD5 mismatch (content was changed in transit)" % path)
         files.append((path, int(mode, 8), data))
         i = end + 1
+    if not files:
+        raise BundleError("the bundle contains no files")
+    for path in seen:
+        parent = path.rpartition("/")[0]
+        while parent:
+            if parent in seen:
+                raise BundleError("%s is both a file and a directory in the bundle" % parent)
+            parent = parent.rpartition("/")[0]
     return files
 
 
 def check_path(path, i):
-    if path.startswith("/") or ".." in path.split("/"):
+    parts = path.split("/")
+    if (not PATH_RE.match(path) or "." in parts or ".." in parts
+            or parts[0] in PROTECTED_TOPS):
         raise BundleError("line %d: unsafe path: %s" % (i + 1, path))
 
 
-def link_configs(out_dir):
-    """Create flowgen/configs/ with a relative link to each golden config."""
-    src = os.path.join(out_dir, CONFIG_SRC)
-    link_dir = os.path.join(out_dir, *CONFIG_LINK_DIR.split("/"))
-    os.makedirs(link_dir, exist_ok=True)
-    if not os.path.isdir(src):
-        print("unpack: WARNING: %s not found; %s left empty"
-              % (os.path.abspath(src), CONFIG_LINK_DIR))
-        return
-    rel_src = os.path.relpath(src, link_dir)       # ../../common_files
-    names = sorted(n for n in os.listdir(src)
-                   if not n.startswith(".") and os.path.isfile(os.path.join(src, n)))
-    linked = 0
-    for name in names:
-        dest = os.path.join(link_dir, name)
-        if os.path.lexists(dest):        # e.g. block_template.config.tcl from the bundle
-            print("unpack: WARNING: %s/%s already exists (from the bundle); not linked"
-                  % (CONFIG_LINK_DIR, name))
-            continue
-        os.symlink(os.path.join(rel_src, name), dest)
-        linked += 1
-    print("unpack: linked %d config(s) from %s into %s" % (linked, CONFIG_SRC, CONFIG_LINK_DIR))
+def own_files(top_dir, bundle_paths, top):
+    """Files under top_dir that are the user's: not in the bundle, not links, not caches.
+
+    Links are skipped because older versions of unpack created config
+    links in flowgen/configs/.
+    """
+    found = []
+    for dirpath, dirnames, filenames in os.walk(top_dir):
+        dirnames[:] = [d for d in dirnames if d != "__pycache__"]
+        for name in filenames:
+            full = os.path.join(dirpath, name)
+            rel = top + "/" + os.path.relpath(full, top_dir).replace(os.sep, "/")
+            if not os.path.islink(full) and rel not in bundle_paths and not name.endswith(".pyc"):
+                found.append(rel)
+    return sorted(found)
 
 
 def main(argv=None):
@@ -129,8 +137,9 @@ def main(argv=None):
     parser.add_argument("bundle", help="bundle file made by pack.py")
     parser.add_argument("-d", "--dir", default=".", help="output directory (default: .)")
     parser.add_argument("--force", action="store_true",
-                        help="remove the existing flowgen/ (top-level directories in the "
-                             "bundle) before unpacking; nothing else is removed")
+                        help="replace the existing flowgen/ (top-level directories in the "
+                             "bundle); it is kept as flowgen.old_<date>_<time> if it holds "
+                             "files of your own. Nothing else is removed")
     parser.add_argument("--list", action="store_true", help="only list the files")
     args = parser.parse_args(argv)
 
@@ -151,24 +160,48 @@ def main(argv=None):
         sys.exit("unpack: ERROR: already exists in %s: %s\n"
                  "unpack: use --force to remove and recreate them."
                  % (os.path.abspath(args.dir), ", ".join(existing)))
-    for top in existing:
-        target = os.path.join(args.dir, top)
-        print("unpack: removing existing %s" % target)
-        if os.path.isdir(target) and not os.path.islink(target):
-            shutil.rmtree(target)
-        else:
-            os.remove(target)
+    for path, _, _ in files:
+        if "/" not in path and os.path.isdir(os.path.join(args.dir, path)):
+            sys.exit("unpack: ERROR: %s is a directory in %s but a file in the bundle"
+                     % (path, os.path.abspath(args.dir)))
 
-    for path, mode, data in files:
-        dest = os.path.join(args.dir, *path.split("/"))
-        if os.path.dirname(dest):
-            os.makedirs(os.path.dirname(dest), exist_ok=True)
-        with open(dest, "wb") as fh:
-            fh.write(data)
-        os.chmod(dest, mode)
+    bundle_paths = set(p for p, _, _ in files)
+    try:
+        for top in existing:
+            target = os.path.join(args.dir, top)
+            if os.path.isdir(target) and not os.path.islink(target):
+                mine = own_files(target, bundle_paths, top)
+                if mine:
+                    backup = "%s.old_%s" % (target, datetime.datetime.now().strftime(
+                        "%Y%m%d_%H%M%S"))
+                    os.rename(target, backup)
+                    print("unpack: existing %s holds %d file(s) of your own (%s%s); kept as %s"
+                          % (target, len(mine), ", ".join(mine[:3]),
+                             ", ..." if len(mine) > 3 else "", backup))
+                else:
+                    print("unpack: removing existing %s" % target)
+                    shutil.rmtree(target)
+            else:
+                print("unpack: removing existing %s" % target)
+                os.remove(target)
 
-    link_configs(args.dir)
-    print("unpack: %d files -> %s" % (len(files), os.path.abspath(args.dir)))
+        for path, mode, data in files:
+            dest = os.path.join(args.dir, *path.split("/"))
+            if os.path.dirname(dest):
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+            with open(dest, "wb") as fh:
+                fh.write(data)
+            os.chmod(dest, mode)
+    except OSError as exc:
+        sys.exit("unpack: ERROR: %s\nunpack: stopped part way; fix the problem and "
+                 "run unpack again with --force." % exc)
+
+    out_dir = os.path.abspath(args.dir)
+    print("unpack: %d files -> %s" % (len(files), out_dir))
+    wrapper = os.path.join(out_dir, "flowgen", "runflowgen.sh")
+    if os.path.isfile(wrapper):
+        print("unpack: next, start a block:  %s --new <block>" % wrapper)
+        print("unpack:   then generate it:   %s <block>" % wrapper)
     return 0
 
 

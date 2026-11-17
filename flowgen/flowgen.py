@@ -2,45 +2,58 @@
 """flowgen - generate EDA run directories from a Tcl block config.
 
 Usage:
-    runflowgen.sh [--force] CONFIG     (csh wrapper in this directory)
-    flowgen.py [--force] CONFIG
+    runflowgen.sh --new BLOCK          (csh wrapper in this directory)
+    runflowgen.sh [--force] BLOCK
+    flowgen.py --new BLOCK
+    flowgen.py [--force] BLOCK
     flowgen.py -h
 
 Arguments:
-    CONFIG    The block config file to read, typically block.config.tcl
-              (any name works). Usually given through the configs link
-              directory, e.g. configs/block.config.tcl.
-    --force   Generate the run directory even if input files are missing
-              or a .f file list cannot be read. Those errors become
-              warnings. Use it to try out the flow before all design files
-              exist. Other config errors (missing settings, bad values,
-              Tcl errors) still stop generation.
+    --new BLOCK
+              Start a new block: create common_files/BLOCK.config.tcl (and
+              common_files/project.config.tcl, the settings shared by all
+              blocks, if it does not exist yet), then say what to edit.
+    BLOCK     The block to generate: reads common_files/BLOCK.config.tcl.
+              common_files/ is the directory next to flowgen/. A path to a
+              config file is also accepted.
+    --force  Generate the run directory even if input files are missing
+              or a .f file list cannot be read. Without it those are
+              errors; with it they become warnings, listed in the headers
+              of the generated scripts. Use it to try out the flow before
+              all design files exist. Other config errors (missing
+              settings, bad values, Tcl errors) still stop generation.
     -h        Show this help and exit.
 
 Examples:
-    flowgen.py configs/block.config.tcl
-    flowgen.py --force configs/block.config.tcl
+    flowgen.py --new uart_ctrl
+    flowgen.py uart_ctrl
+    flowgen.py --force uart_ctrl
+    flowgen.py /some/where/uart_ctrl.config.tcl
 
 Output:
     ./<yyyy_mm_dd_hh_mm_ss>_<TOP_DESIGN>_formality/ in the current directory,
     with one run script per flow (run_<flow>.csh) and one sub-directory per
     flow where the tool runs, holding the generated Formality Tcl script
     (<flow>.tcl) and empty logs/ and reports/ directories. Nothing is launched;
-    run the scripts manually. An existing directory of the same name is
-    overwritten.
+    run the scripts manually. An existing directory is never overwritten;
+    a second run in the same second gets a _2, _3, ... suffix.
 
 Config:
     Plain Tcl, evaluated by a real Tcl interpreter (tkinter). Values are
     written in double quotes, lists in braces with one double-quoted item
     per line; $VARIABLES inside list items are expanded by flowgen.
     Relative paths are relative to the config file's real directory.
-    See configs/block_template.config.tcl for every supported setting.
+    A block config normally starts with "source project.config.tcl" to
+    get the project settings. See configs/block_template.config.tcl for
+    every supported setting.
 
 Requires Python 3.6+ built with tkinter. Standard library only.
 """
 
 import argparse
+import collections
 import datetime
+import difflib
 import os
 import re
 import shutil
@@ -61,9 +74,9 @@ LIB_EXTENSIONS = {"db": (".db",), "lib": (".lib", ".lib.gz")}
 HOOK_POINTS = ("setup", "pre_match", "pre_verify", "post_verify")
 FM = "formality"          # tool key in TOOL_SETTINGS / TOOL_CMD / TOOL_HOOKS
 
-# Every variable flowgen understands. Unknown names with one of the
-# prefixes below produce a warning (catches typos); any other name is
-# treated as a user helper variable.
+# Every variable flowgen understands. A name that is not in this list but
+# looks like one of them (e.g. BLACK_BOX_MODULES, top_design) produces a
+# typo warning; any other name is treated as a user helper variable.
 KNOWN_VARS = (
     "TOP_DESIGN", "FLOWS",
     "RTL_FORMAT", "RTL_FILES", "RTL_INCDIRS", "RTL_DEFINES",
@@ -72,10 +85,17 @@ KNOWN_VARS = (
     "TOOL_CMD", "TOOL_SETTINGS", "TOOL_HOOKS",
     "ENV_SOURCE", "ENV_SETENV",
 )
-CHECKED_PREFIXES = ("DESIGN", "TOP_", "FLOW", "RTL_", "SYN_", "APR_", "SVF_", "SDC_", "UPF_",
-                    "LIB_", "SIM_", "BLACKBOX", "TOOL_", "ENV_")
 
-IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
+
+# Where things live: <root>/flowgen/flowgen.py, <root>/common_files/<block>.config.tcl
+TOOL_DIR = os.path.dirname(os.path.realpath(__file__))
+CONFIG_DIR = os.path.join(os.path.dirname(TOOL_DIR), "common_files")
+CONFIG_SUFFIX = ".config.tcl"
+PROJECT_CONFIG = "project" + CONFIG_SUFFIX
+NEW_BLOCK_TEMPLATE = os.path.join(TOOL_DIR, "configs", "new_block" + CONFIG_SUFFIX)
+PROJECT_TEMPLATE = os.path.join(TOOL_DIR, "configs", "project_template" + CONFIG_SUFFIX)
+WRAPPER = os.path.join(TOOL_DIR, "runflowgen.sh")     # shown in "what to type next" messages
 
 
 class ConfigError(Exception):
@@ -88,10 +108,15 @@ def load_tcl_config(path):
     """Source the config in a fresh Tcl interpreter.
 
     Returns ({name: str or {key: str}}, interpreter) for the global
-    variables the config created (arrays become dicts).
+    variables the config created (arrays become dicts; ENV_SETENV keeps
+    the order in which the config set its entries).
     """
     tcl = tkinter.Tcl()
     before = set(tcl.splitlist(tcl.eval("info globals")))
+    # Remember the order in which ENV_SETENV(...) entries are set.
+    tcl.eval("namespace eval ::flowgen {variable env_order {}}")
+    tcl.eval("trace add variable ::ENV_SETENV write "
+             "{apply {{name key op} {lappend ::flowgen::env_order $key}}}")
 
     old_cwd = os.getcwd()
     os.chdir(os.path.dirname(path))      # relative paths/globs resolve here
@@ -110,8 +135,17 @@ def load_tcl_config(path):
         if tcl.eval("array exists ::%s" % name) == "1":
             flat = tcl.splitlist(tcl.eval("array get ::%s" % name))
             values[name] = dict(zip(flat[0::2], flat[1::2]))
-        else:
+        elif tcl.eval("info exists ::%s" % name) == "1":
             values[name] = tcl.eval("set ::%s" % name)
+    env = values.get("ENV_SETENV")
+    if isinstance(env, dict):
+        ordered = collections.OrderedDict()
+        for key in tcl.splitlist(tcl.eval("set ::flowgen::env_order")):
+            if key in env and key not in ordered:
+                ordered[key] = env[key]
+        for key in sorted(env):
+            ordered.setdefault(key, env[key])
+        values["ENV_SETENV"] = ordered
     return values, tcl
 
 
@@ -124,24 +158,41 @@ class FileSet(object):
         self.defines = []
 
 
+def add_unique(items, new):
+    """Append the new items, skipping ones already present (order kept)."""
+    for item in new:
+        if item not in items:
+            items.append(item)
+
+
 class Config(object):
     """Typed, validated view of the block config. Collects all problems."""
 
     def __init__(self, path, force=False):
         self.force = force
         self.forced = []      # file errors downgraded to warnings by --force
-        self.path = os.path.realpath(path)   # follow flowgen/configs links to common_files
+        self.path = os.path.realpath(path)   # follow links
         self.dir = os.path.dirname(self.path)
         self.errors = []
         self.warnings = []
         self._raw, self._tcl = load_tcl_config(self.path)
 
+        self.file_problems = 0    # missing or unreadable input files seen
+
         for name in sorted(self._raw):
-            if name.startswith(CHECKED_PREFIXES) and name not in KNOWN_VARS:
-                self.warnings.append("unknown variable '%s' ignored (typo?)" % name)
+            if name in KNOWN_VARS:
+                continue
+            close = difflib.get_close_matches(name.upper(), KNOWN_VARS, n=1, cutoff=0.75)
+            if close:
+                self.warnings.append("unknown variable '%s' ignored (did you mean %s?)"
+                                     % (name, close[0]))
 
         self.top = self.scalar("TOP_DESIGN", required=True)
-        self.flows = self.tcl_list("FLOWS", default=["rtl2syn"])
+        if self.top and not IDENT_RE.match(self.top):
+            self.errors.append("TOP_DESIGN: \"%s\" is not a module name (letters, digits "
+                               "and _ only)" % self.top)
+        self.flows = []
+        add_unique(self.flows, self.tcl_list("FLOWS", default=["rtl2syn"]))
         for flow in self.flows:
             if flow not in SUPPORTED_FLOWS:
                 self.errors.append("FLOWS: unknown flow '%s' (supported: %s)"
@@ -150,17 +201,27 @@ class Config(object):
         # Design data
         self.rtl_format = self.choice("RTL_FORMAT", RTL_READERS, default="sverilog")
         self.rtl = self.fileset("RTL_FILES", required=True)
-        self.rtl.incdirs += self.paths("RTL_INCDIRS")
-        self.rtl.defines += self.tcl_list("RTL_DEFINES")
+        add_unique(self.rtl.incdirs, self.paths("RTL_INCDIRS"))
+        add_unique(self.rtl.defines, self.tcl_list("RTL_DEFINES"))
+        for item in self.rtl.incdirs + self.rtl.defines:
+            if re.search(r"\s", item):
+                self.errors.append("RTL_INCDIRS / RTL_DEFINES: spaces are not supported "
+                                   "in include directories and defines: \"%s\"" % item)
         if self.rtl_format == "vhdl" and (self.rtl.incdirs or self.rtl.defines):
             self.errors.append("RTL_INCDIRS / RTL_DEFINES (or +incdir+/+define+ in a .f "
                                "file) only apply to verilog/sverilog")
         needs_syn = "rtl2syn" in self.flows
         self.syn = self.fileset("SYN_FILES", required=needs_syn, netlist=True)
-        self.apr = self.fileset("APR_FILES", netlist=True)        # for future flows
-        self.svf = self.single_path("SVF_FILE")
-        self.sdc = self.paths("SDC_FILES")                        # not used by Formality
-        self.upf = self.paths("UPF_FILES")                        # not used yet
+        # APR_FILES, SDC_FILES and UPF_FILES are not read by any flow yet,
+        # so their files are not checked.
+        self.apr = self.tcl_list("APR_FILES")
+        svf = self.scalar("SVF_FILE")
+        self.svf = self.resolve("SVF_FILE", svf) if svf else ""
+        self.sdc = self.tcl_list("SDC_FILES")
+        self.upf = self.tcl_list("UPF_FILES")
+        if self.upf:
+            self.warnings.append("UPF_FILES is set but not used yet: the generated "
+                                 "Formality script does not load UPF")
 
         # Libraries and simulation models
         self.lib_format = self.choice("LIB_FORMAT", LIB_READERS, default="db")
@@ -176,6 +237,12 @@ class Config(object):
 
         # Tool settings: TOOL_CMD(<tool>), TOOL_SETTINGS(<tool>,<name>), TOOL_HOOKS(<tool>,<point>)
         self.tool_cmd = self.array("TOOL_CMD")
+        for tool, cmd in self.tool_cmd.items():
+            if tool != FM:
+                self.errors.append("TOOL_CMD(%s): unknown tool \"%s\" (supported: %s)"
+                                   % (tool, tool, FM))
+            elif re.search(r"[\r\n]", cmd):
+                self.errors.append("TOOL_CMD(%s): must be one line" % tool)
         self.tool_settings = self.keyed_array("TOOL_SETTINGS")
         self.tool_hooks = {}
         for tool, points in self.keyed_array("TOOL_HOOKS").items():
@@ -190,15 +257,24 @@ class Config(object):
             if not IDENT_RE.match(name):
                 self.errors.append("TOOL_SETTINGS(%s,%s): not a valid app var name" % (FM, name))
 
-        # Run environment
-        self.env_source = self.paths("ENV_SOURCE")
+        # Run environment. An ENV_SOURCE item is a file, optionally
+        # followed by arguments: "/tools/setup.cshrc -v 2023.12".
+        self.env_source = []
+        for item in self.tcl_list("ENV_SOURCE"):
+            words = item.split()
+            self.env_source.append([self.resolve("ENV_SOURCE", words[0])] + words[1:])
         self.env_setenv = self.array("ENV_SETENV")
         for key in self.env_setenv:
             if not IDENT_RE.match(key):
                 self.errors.append("ENV_SETENV(%s): not a valid environment variable name" % key)
+        try:
+            env_lines(self)          # reports values csh cannot quote
+        except ConfigError as exc:
+            self.errors.append(str(exc))
 
     def file_error(self, msg):
         """An error caused by a missing or unreadable input file."""
+        self.file_problems += 1
         if self.force:
             self.forced.append(msg)
             self.warnings.append("%s (ignored: --force)" % msg)
@@ -238,7 +314,13 @@ class Config(object):
         """List items, with $variables expanded (braces do not expand them in Tcl)."""
         value = self._get(name, "scalar")
         items = []
-        for item in (self._tcl.splitlist(value) if value else ()):
+        try:
+            raw_items = self._tcl.splitlist(value) if value else ()
+        except tkinter.TclError as exc:
+            self.errors.append("%s: not a valid list (%s). Check the quotes and braces."
+                               % (name, exc))
+            return list(default or [])
+        for item in raw_items:
             try:
                 item = str(self._tcl.call("subst", "-nocommands", "-nobackslashes", item))
             except tkinter.TclError as exc:
@@ -264,68 +346,81 @@ class Config(object):
                 self.errors.append("%s(%s): key must be <tool>,<name>, e.g. %s(%s,...)"
                                    % (name, key, name, FM))
                 continue
+            if tool.strip() != FM:
+                self.errors.append("%s(%s): unknown tool \"%s\" (supported: %s)"
+                                   % (name, key, tool.strip(), FM))
+                continue
             result.setdefault(tool.strip(), {})[sub.strip()] = value
         return result
 
     def resolve(self, label, path, base=None):
-        """Absolute path (relative to base, default the config dir); warn if missing."""
+        """Absolute path (relative to base, default the config dir).
+
+        A missing file is an error, or a warning with --force.
+        """
         full = os.path.normpath(os.path.join(base or self.dir, os.path.expanduser(path)))
         if not os.path.exists(full):
-            self.warnings.append("%s: file not found: %s" % (label, full))
+            self.file_error("%s: file not found: %s" % (label, full))
         return full
 
     def paths(self, name, required=False):
         return [self.resolve(name, p) for p in self.tcl_list(name, required=required)]
 
-    def single_path(self, name):
-        items = self.paths(name)
-        if len(items) > 1:
-            self.errors.append("%s: give one file, got %d" % (name, len(items)))
-        return items[0] if items else ""
-
     def fileset(self, name, required=False, netlist=False):
         """Files from a list variable; entries ending in .f are file lists."""
         result = FileSet()
+        problems = self.file_problems
         items = self.paths(name, required=required)
         for item in items:
             if item.endswith(".f"):
                 self.read_filelist(name, item, result, [])
             else:
-                result.files.append(item)
+                add_unique(result.files, [item])
         if netlist and (result.incdirs or result.defines):
             self.warnings.append("%s: +incdir+/+define+ in a .f file ignored for netlists" % name)
             result.incdirs, result.defines = [], []
-        if required and items and not result.files:
-            self.file_error("%s: the .f file lists contain no files" % name)
+        if required and items and not result.files and self.file_problems == problems:
+            self.errors.append("%s: the .f file lists contain no files" % name)
         return result
 
     def read_filelist(self, name, path, result, stack):
         """Expand a .f file: one path per line, // or # comments, $VAR expanded.
 
-        Also understands -f/-F <file> (nested lists), -v <file>,
-        +incdir+<dir>[+<dir>...] and +define+<MACRO>[=<value>][+...].
-        Relative paths are relative to the .f file's directory.
+        A comment starts with // or # at the start of a line or after a
+        space. $VAR and ${VAR} come from the environment. Also understands
+        -f/-F <file> (nested lists), -v <file>, +incdir+<dir>[+<dir>...]
+        and +define+<MACRO>[=<value>][+...]. Relative paths are relative to
+        the .f file's directory. A file listed more than once is read once.
         """
         label = "%s (%s)" % (name, os.path.basename(path))
-        if path in stack:
+        real = os.path.realpath(path)
+        if real in stack:
             self.errors.append("%s: file list includes itself" % label)
             return
+        if not os.path.exists(path):
+            return                       # already reported by resolve()
         try:
-            with open(path) as fh:
+            with open(path, encoding="ascii", errors="replace") as fh:
                 lines = fh.readlines()
         except (IOError, OSError) as exc:
             self.file_error("%s: cannot read file list: %s" % (label, exc))
             return
         base = os.path.dirname(path)
         for lineno, line in enumerate(lines, 1):
-            line = line.split("//", 1)[0].strip()
-            if not line or line.startswith("#"):
+            line = FILELIST_COMMENT_RE.split(line, 1)[0].strip()
+            if not line:
                 continue
-            tokens = [os.path.expandvars(t) for t in line.split()]
+            where = "%s line %d" % (label, lineno)
+            tokens = []
+            for tok in line.split():
+                tok = os.path.expandvars(tok)
+                if "$" in tok:
+                    self.errors.append("%s: environment variable not set in: %s" % (where, tok))
+                else:
+                    tokens.append(tok)
             i = 0
             while i < len(tokens):
                 tok = tokens[i]
-                where = "%s line %d" % (label, lineno)
                 if tok in ("-f", "-F", "-v", "-y"):
                     if i + 1 >= len(tokens):
                         self.errors.append("%s: %s needs a file name" % (where, tok))
@@ -336,26 +431,29 @@ class Config(object):
                     else:
                         arg = self.resolve(where, tokens[i + 1], base)
                         if tok == "-v":
-                            result.files.append(arg)
+                            add_unique(result.files, [arg])
                         else:
-                            self.read_filelist(name, arg, result, stack + [path])
+                            self.read_filelist(name, arg, result, stack + [real])
                     i += 2
                     continue
                 if tok.startswith("+incdir+"):
-                    result.incdirs += [self.resolve(where, d, base)
-                                       for d in tok[len("+incdir+"):].split("+") if d]
+                    add_unique(result.incdirs, [self.resolve(where, d, base)
+                                                for d in tok[len("+incdir+"):].split("+") if d])
                 elif tok.startswith("+define+"):
-                    result.defines += [d for d in tok[len("+define+"):].split("+") if d]
+                    add_unique(result.defines,
+                               [d for d in tok[len("+define+"):].split("+") if d])
                 elif tok.startswith(("-", "+")):
                     self.warnings.append("%s: option %s not supported, ignored" % (where, tok))
                 else:
-                    result.files.append(self.resolve(where, tok, base))
+                    add_unique(result.files, [self.resolve(where, tok, base)])
                 i += 1
 
 
 # Quoting helpers
 
-_TCL_BARE = re.compile(r"^[A-Za-z0-9_./:+=@%,~-]+$")
+FILELIST_COMMENT_RE = re.compile(r"(?:^|\s)(?://|#)")
+
+_TCL_BARE = re.compile(r"^[A-Za-z0-9_./:+=@%,~-]+\Z")
 _TCL_SPECIAL = re.compile(r'([\\{}\[\]$";# \t])')
 
 
@@ -363,9 +461,10 @@ def tcl_word(text):
     """Quote text as one Tcl word (also valid as a Tcl list element)."""
     if _TCL_BARE.match(text):
         return text
-    if text and not re.search(r"[{}\\]", text):
+    if text and not re.search(r"[{}\\\r\n]", text):
         return "{%s}" % text
-    return _TCL_SPECIAL.sub(r"\\\1", text).replace("\n", "\\n") or "{}"
+    text = _TCL_SPECIAL.sub(r"\\\1", text)
+    return text.replace("\n", "\\n").replace("\r", "\\r") or "{}"
 
 
 def tcl_list_block(items, indent="  "):
@@ -377,10 +476,36 @@ def tcl_list_block(items, indent="  "):
 
 def csh_word(label, text):
     """Single-quote a value for csh; reject what csh cannot quote safely."""
-    if re.search(r"['!\n]", text):
+    if re.search(r"['!\r\n]", text):
         raise ConfigError("%s: value may not contain ' or ! or newlines for csh: %r"
                           % (label, text))
     return "'%s'" % text
+
+
+def csh_env_value(label, text):
+    """Double-quote a setenv value for csh, so $VAR is expanded at run time."""
+    if re.search(r'["`!\r\n]', text):
+        raise ConfigError("%s: value may not contain \" or ` or ! or newlines for csh: %r"
+                          % (label, text))
+    return '"%s"' % text
+
+
+def env_lines(cfg):
+    """csh lines that set up the environment: ENV_SOURCE, then ENV_SETENV."""
+    lines = []
+    for words in cfg.env_source:
+        path = csh_word("ENV_SOURCE", words[0])
+        args = "".join(" " + csh_word("ENV_SOURCE", w) for w in words[1:])
+        lines += [
+            "if ( ! -r %s ) then" % path,
+            "  echo %s" % csh_word("ENV_SOURCE", "ERROR: cannot read " + words[0]),
+            "  exit 2",
+            "endif",
+            "source %s%s" % (path, args),
+        ]
+    for name, value in cfg.env_setenv.items():
+        lines.append("setenv %s %s" % (name, csh_env_value("ENV_SETENV(%s)" % name, value)))
+    return lines
 
 
 # Formality script generation
@@ -403,22 +528,31 @@ def vcs_option(fileset):
     return " -vcs %s" % tcl_word(" ".join(opts)) if opts else ""
 
 
+def forced_header(cfg):
+    """Comment lines listing the input problems ignored because of --force."""
+    if not cfg.forced:
+        return []
+    return (["# WARNING: generated with --force, these input problems were ignored:"]
+            + ["#   " + msg for msg in cfg.forced])
+
+
 def gen_fm_rtl2syn(cfg, flow):
     """Formality script, <run_dir>/<flow>/<flow>.tcl, run from that directory."""
     settings = dict(cfg.tool_settings.get(FM, {}))
-    settings.setdefault("synopsys_auto_setup", "true")
+    auto_setup = settings.pop("synopsys_auto_setup", "true")
     lines = ["# Formality %s: RTL vs synthesized netlist for %s" % (flow, cfg.top)]
-    if cfg.forced:
-        lines.append("# WARNING: generated with --force, these input problems were ignored:")
-        lines += ["#   " + msg for msg in cfg.forced]
+    lines += forced_header(cfg)
     lines += [
         "",
         "set FLOW %s" % tcl_word(flow),
         "set TOP_DESIGN %s" % tcl_word(cfg.top),
         "file delete -force ${FLOW}.status",
+        "file delete -force {*}[glob -nocomplain reports/${FLOW}.*.rpt]",
     ]
 
+    # synopsys_auto_setup first: it changes the defaults of other variables.
     lines += section("Setup")
+    lines.append("set_app_var synopsys_auto_setup %s" % tcl_word(auto_setup))
     lines += ["set_app_var %s %s" % (n, tcl_word(settings[n])) for n in sorted(settings)]
     lines += hook_lines(cfg, "setup")
 
@@ -443,8 +577,8 @@ def gen_fm_rtl2syn(cfg, flow):
     if cfg.blackboxes:
         lines += section("Black boxes")
         for module in cfg.blackboxes:
-            lines += ["set_black_box r:/WORK/%s" % tcl_word(module),
-                      "set_black_box i:/WORK/%s" % tcl_word(module)]
+            lines += ["set_black_box %s" % tcl_word("r:/WORK/" + module),
+                      "set_black_box %s" % tcl_word("i:/WORK/" + module)]
 
     lines += section("Top-level designs")
     lines += ["set_top r:/WORK/$TOP_DESIGN",
@@ -456,6 +590,8 @@ def gen_fm_rtl2syn(cfg, flow):
               "report_unmatched_points > reports/${FLOW}.unmatched.rpt"]
     lines += hook_lines(cfg, "pre_verify")
 
+    # The status file is written right after verify, so a problem in a
+    # report or hook below cannot turn a finished run into "did not finish".
     lines += section("Verify")
     lines += [
         "set verify_ok [verify]",
@@ -463,6 +599,11 @@ def gen_fm_rtl2syn(cfg, flow):
         "  set result PASS",
         "} else {",
         "  set result FAIL",
+        "}",
+        "set fh [open ${FLOW}.status w]",
+        "puts $fh $result",
+        "close $fh",
+        "if {!$verify_ok} {",
         "  report_failing_points > reports/${FLOW}.failing.rpt",
         "  report_aborted_points > reports/${FLOW}.aborted.rpt",
         "  analyze_points -failing > reports/${FLOW}.analyze.rpt",
@@ -473,9 +614,6 @@ def gen_fm_rtl2syn(cfg, flow):
     lines += section("Finish")
     lines += [
         "save_session -replace ${FLOW}",
-        "set fh [open ${FLOW}.status w]",
-        "puts $fh $result",
-        "close $fh",
         'puts "$FLOW result: $result"',
         "exit",
         "",
@@ -491,19 +629,28 @@ def gen_run_script(cfg, flow):
     lines = [
         "#!/bin/tcsh -f",
         "# Run Formality %s for %s" % (flow, cfg.top),
+        "# Exit status: 0 PASS, 1 FAIL, 2 did not finish (setup or tool problem)",
+    ]
+    lines += forced_header(cfg)
+    lines += [
         "",
         "set flow = %s" % flow,
         'set here = "`dirname $0`"',
+        'if ( ! -d "$here/$flow" ) then',
+        '  echo "ERROR: directory not found: $here/$flow"',
+        "  exit 2",
+        "endif",
         'cd "$here/$flow"',
         "",
         "# Environment",
     ]
-    lines += ["source %s" % csh_word("ENV_SOURCE", p) for p in cfg.env_source]
-    lines += ["setenv %s %s" % (n, csh_word("ENV_SETENV(%s)" % n, cfg.env_setenv[n]))
-              for n in sorted(cfg.env_setenv)]
+    lines += env_lines(cfg)
     lines += [
         "",
         "# Run the tool. Input from /dev/null so it exits if the script stops early.",
+        "# The old result is removed first, so a tool that fails to start is not",
+        "# reported with the result of an earlier run.",
+        "rm -f ${flow}.status",
         "%s -f ${flow}.tcl < /dev/null |& tee logs/${flow}.log" % tool_cmd,
         "",
         "if ( ! -e ${flow}.status ) then",
@@ -522,28 +669,90 @@ def gen_run_script(cfg, flow):
 # Main
 
 def write_file(path, text, executable=False):
-    with open(path, "w") as fh:
+    with open(path, "w", encoding="ascii", newline="\n") as fh:
         fh.write(text)
     if executable:
         mode = os.stat(path).st_mode
         os.chmod(path, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
+def block_names():
+    """Blocks that have a config in common_files/."""
+    if not os.path.isdir(CONFIG_DIR):
+        return []
+    return sorted(n[:-len(CONFIG_SUFFIX)] for n in os.listdir(CONFIG_DIR)
+                  if n.endswith(CONFIG_SUFFIX) and n != PROJECT_CONFIG)
+
+
+def find_config(name):
+    """Config file for a block name (or a path to a config file)."""
+    if os.path.isfile(name):
+        return name
+    path = os.path.join(CONFIG_DIR, name + CONFIG_SUFFIX)
+    if os.path.isfile(path):
+        return path
+    blocks = block_names()
+    raise ConfigError("no config for \"%s\": %s not found.\n"
+                      "flowgen: blocks with a config: %s\n"
+                      "flowgen: to start a new block: %s --new %s"
+                      % (name, path, ", ".join(blocks) or "none yet", WRAPPER, name))
+
+
+def new_block(block):
+    """Create common_files/<block>.config.tcl (and the project config if missing)."""
+    if not IDENT_RE.match(block):
+        raise ConfigError("--new: \"%s\" is not a block name (letters, digits and _ only)" % block)
+    block_path = os.path.join(CONFIG_DIR, block + CONFIG_SUFFIX)
+    project_path = os.path.join(CONFIG_DIR, PROJECT_CONFIG)
+    if os.path.lexists(block_path):
+        raise ConfigError("--new: %s already exists; edit it, or generate with: %s %s"
+                          % (block_path, WRAPPER, block))
+    try:
+        with open(NEW_BLOCK_TEMPLATE, encoding="ascii") as fh:
+            text = fh.read().replace("@BLOCK@", block)
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        new_project = not os.path.lexists(project_path)
+        if new_project:
+            shutil.copyfile(PROJECT_TEMPLATE, project_path)
+        write_file(block_path, text)
+    except (IOError, OSError) as exc:
+        raise ConfigError("--new: %s" % exc)
+
+    print("flowgen: created %s" % block_path)
+    step = 1
+    if new_project:
+        print("flowgen: created %s (shared by all blocks)" % project_path)
+        print("flowgen: %d. edit %s: PROJ_ROOT, LIB_FILES, tool setup (once per project)"
+              % (step, project_path))
+        step += 1
+    print("flowgen: %d. check %s: TOP_DESIGN and the file paths" % (step, block_path))
+    print("flowgen: %d. generate the run directory: %s %s" % (step + 1, WRAPPER, block))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("config", metavar="CONFIG",
-                        help="block config file, typically block.config.tcl")
+    parser.add_argument("config", metavar="BLOCK", nargs="?",
+                        help="block name (reads common_files/BLOCK.config.tcl) or a path "
+                             "to a config file")
+    parser.add_argument("--new", metavar="BLOCK",
+                        help="create common_files/BLOCK.config.tcl for a new block")
     parser.add_argument("--force", action="store_true",
                         help="generate even if input files are missing or a .f file "
                              "list cannot be read (those errors become warnings)")
     args = parser.parse_args(argv)
 
-    if not os.path.isfile(args.config):
-        sys.exit("flowgen: ERROR: config file not found: %s" % args.config)
-
     try:
-        cfg = Config(args.config, force=args.force)
+        if args.new:
+            if args.config:
+                raise ConfigError("give either --new BLOCK or BLOCK, not both")
+            return new_block(args.new)
+        if not args.config:
+            raise ConfigError("which block? Give a block name (blocks with a config: %s) "
+                              "or start one with --new BLOCK"
+                              % (", ".join(block_names()) or "none yet"))
+        cfg = Config(find_config(args.config), force=args.force)
     except ConfigError as exc:
         sys.exit("flowgen: ERROR: %s" % exc)
 
@@ -553,14 +762,18 @@ def main(argv=None):
         for msg in cfg.errors:
             print("flowgen: ERROR: %s" % msg)
         hint = ""
-        if not args.force and any("file list" in m for m in cfg.errors):
-            hint = " Use --force to generate anyway with missing files."
+        if not args.force and cfg.file_problems:
+            hint = (" Use --force to generate anyway: the %d missing input file(s) "
+                    "become warnings." % cfg.file_problems)
         sys.exit("flowgen: %d error(s) in %s; nothing generated.%s"
                  % (len(cfg.errors), cfg.path, hint))
 
     now = datetime.datetime.now()
-    block = re.sub(r"[^A-Za-z0-9_.-]", "_", cfg.top)   # safe as a directory name
-    run_dir = os.path.abspath("%s_%s_formality" % (now.strftime("%Y_%m_%d_%H_%M_%S"), block))
+    base_dir = os.path.abspath("%s_%s_formality" % (now.strftime("%Y_%m_%d_%H_%M_%S"), cfg.top))
+    run_dir, count = base_dir, 1
+    while os.path.lexists(run_dir):      # never overwrite an existing run
+        count += 1
+        run_dir = "%s_%d" % (base_dir, count)
 
     try:
         # Render everything before touching the disk, so a bad value
@@ -568,15 +781,22 @@ def main(argv=None):
         outputs = {}
         for flow in cfg.flows:
             outputs[flow] = (FLOW_GENERATORS[flow](cfg, flow), gen_run_script(cfg, flow))
+            for text in outputs[flow]:
+                bad = sorted(set(ch for ch in text if ord(ch) > 126))
+                if bad:
+                    raise ConfigError("the config has non-ASCII characters (%s); file names "
+                                      "and values must be plain ASCII"
+                                      % " ".join(ascii(ch) for ch in bad))
     except ConfigError as exc:
         sys.exit("flowgen: ERROR: %s" % exc)
 
-    if os.path.isdir(run_dir):
-        print("flowgen: WARNING: %s exists; overwriting" % run_dir)
-        shutil.rmtree(run_dir)
     os.makedirs(run_dir)
-    # Record of the inputs, under the config's own name
+    # Record of the inputs, under the config's own name, with the project
+    # config it sources
     shutil.copy2(cfg.path, os.path.join(run_dir, os.path.basename(cfg.path)))
+    project = os.path.join(cfg.dir, PROJECT_CONFIG)
+    if os.path.isfile(project) and project != cfg.path:
+        shutil.copy2(project, os.path.join(run_dir, PROJECT_CONFIG))
 
     for flow, (fm_tcl, run_csh) in outputs.items():
         os.makedirs(os.path.join(run_dir, flow, "logs"))      # filled in by the tool
@@ -589,7 +809,10 @@ def main(argv=None):
         print("flowgen: WARNING: generated with --force; %d input problem(s) ignored "
               "(listed in the script headers)" % len(cfg.forced))
     for flow in cfg.flows:
-        print("flowgen:   %-10s run with: %s" % (flow, os.path.join(run_dir, "run_%s.csh" % flow)))
+        print("flowgen: next, run %s:  %s" % (flow, os.path.join(run_dir, "run_%s.csh" % flow)))
+        print("flowgen:   result (PASS or FAIL) is printed at the end and written to %s"
+              % os.path.join(run_dir, flow, flow + ".status"))
+        print("flowgen:   log: %s" % os.path.join(run_dir, flow, "logs", flow + ".log"))
     return 0
 
 
