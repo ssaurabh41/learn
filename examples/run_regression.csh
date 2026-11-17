@@ -2,7 +2,7 @@
 # Regression test for flowgen. Usage: examples/run_regression.csh
 # Needs python3 (3.6+ with tkinter) and tcsh on PATH.
 #
-# Each case generates a run directory in examples/regression_out/<case>/
+# Each case generates a run directory in regression_out/<case>/ at the top
 # (removed at the start) and must print no warnings or errors:
 #   example   examples/configs/block.config.tcl (uses the search dirs)
 #   new_block flowgen/configs/new_block.config.tcl, as --new writes it
@@ -19,7 +19,7 @@ if ( "$root" == "" || ! -f "$root/flowgen/flowgen.py" ) then
   exit 2
 endif
 set flowgen = "$root/flowgen/flowgen.py"
-set out = "$root/examples/regression_out"
+set out = "$root/regression_out"   # outside examples/: unpack.py leaves it alone
 if ( -d "$out" ) rm -rf "$out"
 mkdir -p "$out/configs"
 set fail = 0

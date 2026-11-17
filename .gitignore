@@ -1,5 +1,5 @@
 # Generated output (local, never packed)
 runs/
 *_formality/
-examples/regression_out/
+regression_out/
 __pycache__/

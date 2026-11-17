@@ -1,12 +1,12 @@
 #@@PACK 3
-#@@FILE .gitignore mode=644 enc=text lines=5 eol=1 md5=750303b2f4439ad9f6b5e332453f6903
+#@@FILE .gitignore mode=644 enc=text lines=5 eol=1 md5=055484ce6ae99b499e4ba4535c4547de
 # Generated output (local, never packed)
 runs/
 *_formality/
-examples/regression_out/
+regression_out/
 __pycache__/
 #@@END .gitignore
-#@@FILE examples/README.md mode=644 enc=text lines=26 eol=1 md5=be3d635fe914213d2fa8528190530459
+#@@FILE examples/README.md mode=644 enc=text lines=27 eol=1 md5=cbf597ce63a291cb321888aec70ad84d
 # examples
 
 A small placeholder design and its configs, used by the regression test.
@@ -31,7 +31,8 @@ Run the regression after every change to flowgen:
 examples/run_regression.csh
 ```
 
-It generates run directories under `examples/regression_out/` and checks
+It generates run directories under `regression_out/` (next to `examples/`, so
+unpacking a new bundle leaves it alone) and checks
 that flowgen prints no warnings and that the run directories are complete.
 #@@END examples/README.md
 #@@FILE examples/block/rtl/block.sv mode=644 enc=text lines=15 eol=1 md5=e4c3b3f341fe68c721dbe8b392897c77
@@ -141,12 +142,12 @@ set ENV_SETENV(SNPSLMD_LICENSE_FILE) "27020@lic-server1"
 #@@FILE examples/pdk/stdcell_tt.db mode=644 enc=text lines=1 eol=1 md5=11c0989f5f33013bfa5a1d649566c67a
 Placeholder library for the flowgen regression. A real .db is a compiled Liberty library.
 #@@END examples/pdk/stdcell_tt.db
-#@@FILE examples/run_regression.csh mode=755 enc=text lines=99 eol=1 md5=17261efef9ef5e432d175b1336f2de44
+#@@FILE examples/run_regression.csh mode=755 enc=text lines=99 eol=1 md5=5671c841f5134a9751cb21187a8017de
 #!/bin/tcsh -f
 # Regression test for flowgen. Usage: examples/run_regression.csh
 # Needs python3 (3.6+ with tkinter) and tcsh on PATH.
 #
-# Each case generates a run directory in examples/regression_out/<case>/
+# Each case generates a run directory in regression_out/<case>/ at the top
 # (removed at the start) and must print no warnings or errors:
 #   example   examples/configs/block.config.tcl (uses the search dirs)
 #   new_block flowgen/configs/new_block.config.tcl, as --new writes it
@@ -163,7 +164,7 @@ if ( "$root" == "" || ! -f "$root/flowgen/flowgen.py" ) then
   exit 2
 endif
 set flowgen = "$root/flowgen/flowgen.py"
-set out = "$root/examples/regression_out"
+set out = "$root/regression_out"   # outside examples/: unpack.py leaves it alone
 if ( -d "$out" ) rm -rf "$out"
 mkdir -p "$out/configs"
 set fail = 0
@@ -2003,7 +2004,7 @@ def main(argv=None):
 if __name__ == "__main__":
     sys.exit(main())
 #@@END pack.py
-#@@FILE session.md mode=644 enc=text lines=319 eol=1 md5=153f6b7f20c8fa6abc5c7696c8e60ea0
+#@@FILE session.md mode=644 enc=text lines=320 eol=1 md5=a93fb270f1f012fe37d4e36cccc7e25a
 # Session handoff: flowgen (EDA flow generator)
 
 Paste this file into a new Claude Code session (or keep it in the repo root)
@@ -2281,7 +2282,8 @@ The Synopsys manuals are behind SolvNet; these are best-knowledge forms:
 ## Regression
 
 `examples/run_regression.csh` (tcsh; python3 with tkinter on PATH). Output
-in examples/regression_out/ (gitignored, removed at the start). Cases:
+in regression_out/ at the top (gitignored, removed at the start; outside
+examples/ so unpack --force does not see it as user files). Cases:
 - example: examples/configs/block.config.tcl (sources
   examples/configs/project.config.tcl, PROJ_ROOT ".." = examples/; uses
   RTL_SEARCH_DIRS, SYN_SEARCH_DIRS, RTL_INCDIRS, bare names in source.f)

@@ -275,7 +275,8 @@ The Synopsys manuals are behind SolvNet; these are best-knowledge forms:
 ## Regression
 
 `examples/run_regression.csh` (tcsh; python3 with tkinter on PATH). Output
-in examples/regression_out/ (gitignored, removed at the start). Cases:
+in regression_out/ at the top (gitignored, removed at the start; outside
+examples/ so unpack --force does not see it as user files). Cases:
 - example: examples/configs/block.config.tcl (sources
   examples/configs/project.config.tcl, PROJ_ROOT ".." = examples/; uses
   RTL_SEARCH_DIRS, SYN_SEARCH_DIRS, RTL_INCDIRS, bare names in source.f)

@@ -22,5 +22,6 @@ Run the regression after every change to flowgen:
 examples/run_regression.csh
 ```
 
-It generates run directories under `examples/regression_out/` and checks
+It generates run directories under `regression_out/` (next to `examples/`, so
+unpacking a new bundle leaves it alone) and checks
 that flowgen prints no warnings and that the run directories are complete.
