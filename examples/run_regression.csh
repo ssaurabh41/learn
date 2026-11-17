@@ -6,6 +6,7 @@
 # (removed at the start) and must print no warnings or errors:
 #   example   examples/configs/block.config.tcl (uses the search dirs)
 #   new_block flowgen/configs/new_block.config.tcl, as --new writes it
+#   csv       flowgen/configs/block_template.config.csv through csv2config.py
 # The run directory must hold the run script (which must parse), the
 # Formality script, logs/, reports/ and copies of both configs.
 # Last, the reference template block_template.config.tcl must be valid
@@ -30,12 +31,19 @@ sed "s|^set PROJ_ROOT .*|set PROJ_ROOT ${q}$root/examples${q}|" \
   "$root/examples/configs/project.config.tcl" > "$out/configs/project.config.tcl"
 sed "s|@BLOCK@|block|g" "$root/flowgen/configs/new_block.config.tcl" \
   > "$out/configs/new_block.config.tcl"
+python3 "$root/flowgen/csv2config.py" "$root/flowgen/configs/block_template.config.csv" \
+  -o "$out/configs/csv.config.tcl" > "$out/csv2config.log"
+if ( $status != 0 ) then
+  echo "FAIL csv: csv2config failed (see $out/csv2config.log)"
+  set fail = 1
+endif
 
-foreach case ( example new_block )
+foreach case ( example new_block csv )
   if ( "$case" == "example" ) then
     set config = "$root/examples/configs/block.config.tcl"
   else
     set config = "$out/configs/$case.config.tcl"
+    if ( ! -f "$config" ) continue
   endif
   mkdir -p "$out/$case"
   cd "$out/$case"

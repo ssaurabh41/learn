@@ -45,7 +45,8 @@ Config:
     Relative paths are relative to the config file's real directory.
     A block config normally starts with "source project.config.tcl" to
     get the project settings. See configs/block_template.config.tcl for
-    every supported setting.
+    every supported setting. A config can also be made from a spreadsheet:
+    see csv2config.py -h.
 
 Requires Python 3.6+ built with tkinter. Standard library only.
 """
@@ -84,6 +85,14 @@ KNOWN_VARS = (
     "LIB_FORMAT", "LIB_FILES", "SIM_FILES", "BLACKBOX_MODULES",
     "TOOL_CMD", "TOOL_SETTINGS", "TOOL_HOOKS",
     "ENV_SOURCE", "ENV_SETENV",
+)
+
+# Settings that are lists (one item per line in braces; one row per item
+# in the CSV, see csv2config.py). The others are single values or arrays.
+LIST_SETTINGS = (
+    "FLOWS", "RTL_SEARCH_DIRS", "RTL_FILES", "RTL_INCDIRS", "RTL_DEFINES",
+    "SYN_SEARCH_DIRS", "SYN_FILES", "APR_FILES", "SDC_FILES", "UPF_FILES",
+    "LIB_FILES", "SIM_FILES", "BLACKBOX_MODULES", "ENV_SOURCE",
 )
 
 IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")

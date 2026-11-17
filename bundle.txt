@@ -1,9 +1,10 @@
 #@@PACK 3
-#@@FILE .gitignore mode=644 enc=text lines=4 eol=1 md5=cf6c63501651a7221be3e471cc91d086
+#@@FILE .gitignore mode=644 enc=text lines=5 eol=1 md5=750303b2f4439ad9f6b5e332453f6903
 # Generated output (local, never packed)
 runs/
 *_formality/
 examples/regression_out/
+__pycache__/
 #@@END .gitignore
 #@@FILE examples/README.md mode=644 enc=text lines=26 eol=1 md5=be3d635fe914213d2fa8528190530459
 # examples
@@ -140,7 +141,7 @@ set ENV_SETENV(SNPSLMD_LICENSE_FILE) "27020@lic-server1"
 #@@FILE examples/pdk/stdcell_tt.db mode=644 enc=text lines=1 eol=1 md5=11c0989f5f33013bfa5a1d649566c67a
 Placeholder library for the flowgen regression. A real .db is a compiled Liberty library.
 #@@END examples/pdk/stdcell_tt.db
-#@@FILE examples/run_regression.csh mode=755 enc=text lines=91 eol=1 md5=b2caf6b883c21dd99072febceea7c403
+#@@FILE examples/run_regression.csh mode=755 enc=text lines=99 eol=1 md5=17261efef9ef5e432d175b1336f2de44
 #!/bin/tcsh -f
 # Regression test for flowgen. Usage: examples/run_regression.csh
 # Needs python3 (3.6+ with tkinter) and tcsh on PATH.
@@ -149,6 +150,7 @@ Placeholder library for the flowgen regression. A real .db is a compiled Liberty
 # (removed at the start) and must print no warnings or errors:
 #   example   examples/configs/block.config.tcl (uses the search dirs)
 #   new_block flowgen/configs/new_block.config.tcl, as --new writes it
+#   csv       flowgen/configs/block_template.config.csv through csv2config.py
 # The run directory must hold the run script (which must parse), the
 # Formality script, logs/, reports/ and copies of both configs.
 # Last, the reference template block_template.config.tcl must be valid
@@ -173,12 +175,19 @@ sed "s|^set PROJ_ROOT .*|set PROJ_ROOT ${q}$root/examples${q}|" \
   "$root/examples/configs/project.config.tcl" > "$out/configs/project.config.tcl"
 sed "s|@BLOCK@|block|g" "$root/flowgen/configs/new_block.config.tcl" \
   > "$out/configs/new_block.config.tcl"
+python3 "$root/flowgen/csv2config.py" "$root/flowgen/configs/block_template.config.csv" \
+  -o "$out/configs/csv.config.tcl" > "$out/csv2config.log"
+if ( $status != 0 ) then
+  echo "FAIL csv: csv2config failed (see $out/csv2config.log)"
+  set fail = 1
+endif
 
-foreach case ( example new_block )
+foreach case ( example new_block csv )
   if ( "$case" == "example" ) then
     set config = "$root/examples/configs/block.config.tcl"
   else
     set config = "$out/configs/$case.config.tcl"
+    if ( ! -f "$config" ) continue
   endif
   mkdir -p "$out/$case"
   cd "$out/$case"
@@ -233,7 +242,7 @@ endif
 echo "regression: PASSED"
 exit 0
 #@@END examples/run_regression.csh
-#@@FILE flowgen/README.md mode=644 enc=text lines=93 eol=1 md5=2eb44514bc38d04e4e3d2b41f054b54e
+#@@FILE flowgen/README.md mode=644 enc=text lines=110 eol=1 md5=a61c4aaa4ce9e4573a7238a11ec8d56f
 # flowgen
 
 Generates EDA run directories from one Tcl block config. Python 3.6+ (with tkinter), standard library only.
@@ -257,6 +266,23 @@ Each command prints what to do next. `uart_ctrl` is your block's name.
 4. Generate. If a file is missing, the error list says which setting to fix.
 
 `common_files/` is the directory next to `flowgen/`. It holds your configs on your own machine: it is never packed into `bundle.txt`, and `unpack.py` never touches it. The commands can be run from any directory; the run directory is created in the current directory.
+
+### Or: fill in a spreadsheet
+
+Instead of editing the Tcl config, you can fill in a spreadsheet and convert it:
+
+```
+cp flowgen/configs/block_template.config.csv common_files/uart_ctrl.config.csv
+```
+
+Open `common_files/uart_ctrl.config.csv` in LibreOffice (in the import dialog set the Value column to Text), fill in the Value column and save it as CSV. Every setting has a Description and an Example column. One value per row; for a list, add more rows with the same Setting (or an empty Setting cell). An empty Value means "not set here", so the project config's value is used. Then:
+
+```
+flowgen/csv2config.py common_files/uart_ctrl.config.csv
+flowgen/runflowgen.sh uart_ctrl
+```
+
+`csv2config.py` writes `common_files/uart_ctrl.config.tcl`. It does not overwrite an existing file unless you add `--force`; once you use the CSV, edit the CSV and rerun it rather than editing the `.tcl`.
 
 ## Usage
 
@@ -328,6 +354,43 @@ Updating flowgen: unpack the new bundle with `python3 unpack.py --force bundle.t
 | `ENV_SOURCE` | | cshrc files sourced by the run script; arguments may follow the file name |
 | `ENV_SETENV(NAME)` | | environment variables set by the run script, in the order of the config; `$VAR` in a value is expanded when the script runs |
 #@@END flowgen/README.md
+#@@FILE flowgen/configs/block_template.config.csv mode=644 enc=text lines=35 eol=1 md5=fff4c00e306752c6951d0227cb77f350
+Setting,Value,Required,Description,Example
+# HOW TO EDIT,,,"Copy this file to common_files/<block>.config.csv, edit the Value column, save as CSV, then run: flowgen/csv2config.py common_files/<block>.config.csv. One value per row. For a list, add more rows below with the same Setting name (or leave the Setting cell empty). Rows whose Setting starts with # are headings. An empty Value means not set here: the project config value or the default is used. LibreOffice: when opening, set the Value column type to Text so values like 4:0:0 are not changed.",
+# PROJECT SETTINGS,,,"Shared settings (PROJ_ROOT, libraries, tool setup) come from project.config.tcl.",
+source,project.config.tcl,yes,Read the project settings first. Everything below can change them for this block.,project.config.tcl
+# YOUR OWN VARIABLES,,,"Optional helper variables, used below as $NAME. flowgen does not need them.",
+BLOCK,block,,Name of the block's directory under $PROJ_ROOT.,uart_ctrl
+USER_RTL_DIR,,,Example helper variable. Leave empty if not used.,$PROJ_ROOT/$BLOCK/rtl
+# DESIGN,,,,
+TOP_DESIGN,block,yes,Top-level design (module) name.,uart_ctrl
+FLOWS,,,"Flows to generate, one row each. Default: rtl2syn (RTL vs synthesized netlist).",rtl2syn
+# RTL,,,,
+RTL_FORMAT,,,"RTL language: sverilog (default), verilog or vhdl.",verilog
+RTL_SEARCH_DIRS,,,"Directories searched, in order, for RTL file names without a full path (in RTL_FILES and inside .f files). One row per directory.",$PROJ_ROOT/$BLOCK/rtl
+RTL_FILES,$PROJ_ROOT/$BLOCK/rtl/source.f,yes,"RTL files or .f file lists, one row each. A .f file has one file per line; // and # start comments; $NAME is a config variable, else an environment variable.",block.sv
+RTL_INCDIRS,,,"Include directories for `include files, one row each. RTL file names are also looked up here. Not for vhdl.",$PROJ_ROOT/$BLOCK/rtl/include
+RTL_DEFINES,,,"Verilog macros, NAME or NAME=VALUE, one row each. Not for vhdl.",SYNTHESIS
+# NETLISTS,,,,
+SYN_SEARCH_DIRS,,,"Directories searched, in order, for netlist file names without a full path. One row per directory.",$PROJ_ROOT/$BLOCK/syn/outputs
+SYN_FILES,$PROJ_ROOT/$BLOCK/syn/outputs/$TOP_DESIGN.syn.v,yes (rtl2syn),"Synthesized netlist files or .f file lists, one row each.",block.syn.v
+APR_FILES,,,Place-and-route netlist files or .f file lists. Not used by rtl2syn.,$PROJ_ROOT/$BLOCK/apr/outputs/$TOP_DESIGN.apr.v
+# GUIDANCE AND CONSTRAINTS,,,,
+SVF_FILE,$PROJ_ROOT/$BLOCK/syn/outputs/$TOP_DESIGN.svf,,SVF guidance file from synthesis. Recommended for Formality. Leave empty if there is none.,$PROJ_ROOT/$BLOCK/syn/outputs/$TOP_DESIGN.svf
+SDC_FILES,,,"Timing constraint files, one row each. Not used by Formality.",$PROJ_ROOT/$BLOCK/constraints/$TOP_DESIGN.sdc
+UPF_FILES,,,"Power intent files, one row each. Not used by flowgen yet.",$PROJ_ROOT/$BLOCK/upf/$TOP_DESIGN.upf
+# SIMULATION MODELS AND BLACK BOXES,,,,
+SIM_FILES,,,"Verilog models for hard IPs or cells without a library model, one row each. Read into both reference and implementation.",/ip/pll/verilog/pll_top.v
+BLACKBOX_MODULES,,,"Modules to black box, one row each. Nothing is black boxed unless listed here.",pll_top
+# PROJECT SETTINGS FOR THIS BLOCK ONLY,,,Usually set in project.config.tcl. Fill a value only to change it for this block.,
+LIB_FORMAT,,,"Library file format: db (read_db) or lib (.lib or .lib.gz, read_lib).",db
+LIB_FILES,,,"Library files, one row each. Only these exact files are read. A value here replaces the project list.",/pdk/stdcell/db/stdcell_tt_0p80v_25c.db
+ENV_SOURCE,,,"Shell setup files sourced by the run script, one row each. Arguments may follow the file name.",/tools/synopsys/setup.cshrc
+ENV_SETENV(SNPSLMD_LICENSE_FILE),,,Environment variable set by the run script: ENV_SETENV(<NAME>). One row per variable.,27020@lic-server1
+TOOL_CMD(formality),,,Command that starts Formality. Default: fm_shell,/tools/synopsys/fm/bin/fm_shell
+"TOOL_SETTINGS(formality,hdlin_unresolved_modules)",,,"Any Formality variable: TOOL_SETTINGS(formality,<variable>), written as set_app_var. One row per variable.",black_box
+"TOOL_HOOKS(formality,pre_match)",,,"Your own Tcl file sourced in the Formality script. Hook points: setup, pre_match, pre_verify, post_verify.",$PROJ_ROOT/$BLOCK/fm/constants.tcl
+#@@END flowgen/configs/block_template.config.csv
 #@@FILE flowgen/configs/block_template.config.tcl mode=644 enc=text lines=247 eol=1 md5=29f7cd1c8f1cfe109714d6a5df8f985d
 # Block configuration template for flowgen.py
 #
@@ -657,7 +720,212 @@ set ENV_SOURCE {}
 # Example:
 #   set TOOL_SETTINGS(formality,verification_timeout_limit) "4:0:0"
 #@@END flowgen/configs/project_template.config.tcl
-#@@FILE flowgen/flowgen.py mode=755 enc=text lines=879 eol=1 md5=6bb05227edd66318670aa073c3619a25
+#@@FILE flowgen/csv2config.py mode=755 enc=text lines=203 eol=1 md5=e8345b70a7b658f64c34cf156bae6e1a
+#!/usr/bin/env python3
+"""csv2config - turn a block config spreadsheet (CSV) into a block config.
+
+Usage:
+    csv2config.py [--force] [-o OUTPUT] CSV
+
+Arguments:
+    CSV       The block config spreadsheet, <block>.config.csv, normally in
+              common_files/. Start from configs/block_template.config.csv:
+                cp flowgen/configs/block_template.config.csv \\
+                   common_files/uart_ctrl.config.csv
+              Edit it in LibreOffice (when opening, set the Value column to
+              Text) and save it as CSV.
+    -o        Output file. Default: the CSV name with .csv replaced by
+              .tcl, next to the CSV (uart_ctrl.config.csv ->
+              uart_ctrl.config.tcl), which is where runflowgen.sh finds it.
+    --force   Overwrite the output file if it already exists.
+    -h        Show this help and exit.
+
+Example:
+    csv2config.py common_files/uart_ctrl.config.csv
+    runflowgen.sh uart_ctrl
+
+CSV columns: Setting, Value, Required, Description, Example.
+  - One value per row. For a list, add more rows with the same Setting
+    (or an empty Setting cell); they are collected in order.
+  - A Setting starting with # is a heading.
+  - An empty Value means "not set here", so the project config's value
+    (or flowgen's default) is used. Empty rows are left out of the output.
+  - Setting "source" writes "source <file>", e.g. project.config.tcl.
+  - Description becomes a comment above the setting. Required and Example
+    are for the reader only.
+  - Settings flowgen does not know are written as your own helper
+    variables (e.g. USER_RTL_DIR), so you can use them as $NAME.
+
+Python 3.6+, standard library only.
+"""
+
+import argparse
+import csv
+import os
+import re
+import sys
+import textwrap
+
+sys.dont_write_bytecode = True        # no __pycache__/ in flowgen/ (unpack.py
+                                      # would treat it as a file of yours)
+from flowgen import LIST_SETTINGS     # flowgen.py in the same directory
+
+NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\([^()\s]+\))?\Z")
+COLUMNS = ("setting", "value", "required", "description", "example")
+
+
+class CsvError(Exception):
+    pass
+
+
+def tcl_quote(text):
+    """Text in double quotes for Tcl. $NAME stays live (variables expand);
+    characters Tcl would treat specially otherwise are escaped."""
+    for ch in ("\\", '"', "[", "]"):
+        text = text.replace(ch, "\\" + ch)
+    return '"%s"' % text
+
+
+def read_rows(path):
+    """Rows as dicts with the COLUMNS keys, plus the CSV line number."""
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+    except (IOError, OSError) as exc:
+        raise CsvError("cannot read %s: %s" % (path, exc))
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise CsvError("%s is not UTF-8/ASCII text; save it as CSV with UTF-8" % path)
+    lines = text.splitlines(True)
+    if not lines:
+        raise CsvError("%s is empty" % path)
+    # LibreOffice may save with ; or tab instead of , depending on settings.
+    delimiter = max((",", ";", "\t"), key=lines[0].count)
+    reader = csv.reader(lines, delimiter=delimiter)
+    head = [h.strip().lower() for h in next(reader)]
+    if head[:2] != ["setting", "value"]:
+        raise CsvError("%s: first row must be the header Setting, Value, ... (got %s)"
+                       % (path, ", ".join(head)))
+    rows = []
+    for lineno, cells in enumerate(reader, 2):
+        cells = [c.strip() for c in cells] + [""] * len(COLUMNS)
+        row = dict(zip(COLUMNS, cells))
+        row["line"] = lineno
+        rows.append(row)
+    return rows
+
+
+def collect(rows):
+    """Group rows into ordered entries: ['heading', title] or
+    ['setting', name, values, description, first line]."""
+    entries, by_name, current, errors = [], {}, None, []
+    for row in rows:
+        name, value = row["setting"], row["value"]
+        if not any(row[c] for c in COLUMNS):
+            continue
+        if name.startswith("#"):
+            entries.append(["heading", name.lstrip("#").strip()])
+            current = None
+            continue
+        if not name:
+            if not value:
+                continue
+            if current is None:
+                errors.append("line %d: value %r has no Setting above it" % (row["line"], value))
+                continue
+            name = current
+        if name != "source" and not NAME_RE.match(name):
+            errors.append("line %d: %r is not a valid setting name" % (row["line"], name))
+            continue
+        if name in by_name and name not in LIST_SETTINGS and name != "source":
+            errors.append("line %d: %s is a single value but appears again (first on line %d)"
+                          % (row["line"], name, by_name[name][4]))
+            continue
+        if name in by_name and name != "source":
+            entry = by_name[name]
+        else:
+            entry = ["setting", name, [], row["description"], row["line"]]
+            by_name[name] = entry
+            entries.append(entry)
+        if value:
+            entry[2].append(value)
+        current = name
+    if errors:
+        raise CsvError("\n".join(errors))
+    return entries
+
+
+def render(entries, csv_name):
+    """Config text. Empty settings are left out; a heading is written only
+    if a setting follows it."""
+    blocks, heading = [], None
+    for entry in entries:
+        if entry[0] == "heading":
+            heading = entry[1]
+            continue
+        _, name, values, description, _ = entry
+        if not values:
+            continue
+        lines = []
+        if heading is not None:
+            lines += ["", "# " + heading]
+            heading = None
+        lines.append("")
+        for para in description.splitlines():
+            lines += ["# " + l for l in textwrap.wrap(para, 74)]
+        if name == "source":
+            lines += ["source %s" % tcl_quote(v) for v in values]
+        elif name in LIST_SETTINGS:
+            lines.append("set %s {" % name)
+            lines += ["  " + tcl_quote(v) for v in values]
+            lines.append("}")
+        else:
+            lines.append("set %s %s" % (name, tcl_quote(values[0])))
+        blocks += lines
+    header = "# From %s. Edit the CSV and rerun csv2config.py." % csv_name
+    return "\n".join([header] + blocks) + "\n"
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("csv", metavar="CSV", help="block config CSV, <block>.config.csv")
+    parser.add_argument("-o", "--output", help="output .config.tcl file")
+    parser.add_argument("--force", action="store_true", help="overwrite an existing output file")
+    args = parser.parse_args(argv)
+
+    if not args.csv.endswith(".config.csv"):
+        print("csv2config: WARNING: block CSVs are named <block>.config.csv: %s" % args.csv)
+    output = args.output or (args.csv[:-len(".csv")] + ".tcl" if args.csv.endswith(".csv")
+                             else args.csv + ".tcl")
+    if os.path.lexists(output) and not args.force:
+        sys.exit("csv2config: ERROR: %s already exists. Use --force to overwrite it." % output)
+
+    try:
+        entries = collect(read_rows(args.csv))
+    except CsvError as exc:
+        sys.exit("\n".join("csv2config: ERROR: " + l for l in str(exc).splitlines()))
+    text = render(entries, os.path.basename(args.csv))
+    bad = sorted(set(ch for ch in text if ord(ch) > 126))
+    if bad:
+        sys.exit("csv2config: ERROR: the CSV has non-ASCII characters (%s); values must be "
+                 "plain ASCII" % " ".join(ascii(ch) for ch in bad))
+
+    with open(output, "w", encoding="ascii", newline="\n") as fh:
+        fh.write(text)
+    print("csv2config: wrote %s" % output)
+    block = os.path.basename(output)
+    if block.endswith(".config.tcl"):
+        print("csv2config: next, generate the run directory: runflowgen.sh %s"
+              % block[:-len(".config.tcl")])
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+#@@END flowgen/csv2config.py
+#@@FILE flowgen/flowgen.py mode=755 enc=text lines=888 eol=1 md5=75004ae3360d88bf816a1d012a15de75
 #!/usr/bin/env python3
 """flowgen - generate EDA run directories from a Tcl block config.
 
@@ -705,7 +973,8 @@ Config:
     Relative paths are relative to the config file's real directory.
     A block config normally starts with "source project.config.tcl" to
     get the project settings. See configs/block_template.config.tcl for
-    every supported setting.
+    every supported setting. A config can also be made from a spreadsheet:
+    see csv2config.py -h.
 
 Requires Python 3.6+ built with tkinter. Standard library only.
 """
@@ -744,6 +1013,14 @@ KNOWN_VARS = (
     "LIB_FORMAT", "LIB_FILES", "SIM_FILES", "BLACKBOX_MODULES",
     "TOOL_CMD", "TOOL_SETTINGS", "TOOL_HOOKS",
     "ENV_SOURCE", "ENV_SETENV",
+)
+
+# Settings that are lists (one item per line in braces; one row per item
+# in the CSV, see csv2config.py). The others are single values or arrays.
+LIST_SETTINGS = (
+    "FLOWS", "RTL_SEARCH_DIRS", "RTL_FILES", "RTL_INCDIRS", "RTL_DEFINES",
+    "SYN_SEARCH_DIRS", "SYN_FILES", "APR_FILES", "SDC_FILES", "UPF_FILES",
+    "LIB_FILES", "SIM_FILES", "BLACKBOX_MODULES", "ENV_SOURCE",
 )
 
 IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
@@ -1726,7 +2003,7 @@ def main(argv=None):
 if __name__ == "__main__":
     sys.exit(main())
 #@@END pack.py
-#@@FILE session.md mode=644 enc=text lines=288 eol=1 md5=196b140e01c2adbc648bedfd3d048706
+#@@FILE session.md mode=644 enc=text lines=318 eol=1 md5=84ae095f9a487a3a0b529165cecdf906
 # Session handoff: flowgen (EDA flow generator)
 
 Paste this file into a new Claude Code session (or keep it in the repo root)
@@ -1776,12 +2053,14 @@ common_files/              golden block configs (LOCAL ONLY, never packed;
                            repo copy holds only a README)
 flowgen/
   flowgen.py               the generator
+  csv2config.py            <block>.config.csv -> <block>.config.tcl
   runflowgen.sh            tcsh wrapper: runs flowgen.py with python3
   README.md
   configs/
     block_template.config.tcl     reference listing every setting
     new_block.config.tcl          short block config written by --new
                                   (@BLOCK@ is replaced by the block name)
+    block_template.config.csv     spreadsheet version for csv2config.py
     project_template.config.tcl   copied to common_files/project.config.tcl
                                   by the first --new
 examples/                  placeholder design + configs for the regression
@@ -1896,6 +2175,32 @@ How it works:
   ($VAR expanded by csh at run time). ENV_SOURCE items may carry
   arguments after the file name.
 
+## csv2config.py (flowgen/)
+
+- `flowgen/csv2config.py [--force] [-o OUTPUT] <block>.config.csv` writes
+  <block>.config.tcl next to the CSV (normally common_files/). Refuses to
+  overwrite unless --force (decided: refuse unless --force). Once used,
+  the CSV is the master; the .tcl starts with
+  "# From <csv>. Edit the CSV and rerun csv2config.py."
+- Template: flowgen/configs/block_template.config.csv (common_files/ is
+  never shipped). The user copies it to common_files/<block>.config.csv.
+  Its values give the same config as --new (source project.config.tcl,
+  BLOCK, TOP_DESIGN, RTL_FILES, SYN_FILES, SVF_FILE).
+- CSV columns: Setting, Value, Required, Description, Example. Delimiter
+  , ; or tab (auto); UTF-8 with or without BOM; output must be ASCII.
+- One value per row; list settings take more rows with the same Setting
+  or an empty Setting cell (decided: one row per item). A single-value
+  setting repeated is an error. "# ..." rows are headings (written only
+  if a setting follows). Setting "source" writes `source "<file>"`.
+- An empty Value is left out of the output (not `set X {}`), so the
+  project config's value stays. Consequence: the CSV cannot clear a
+  project setting for one block; edit the .tcl for that.
+- Unknown names become helper variables (usable as $NAME).
+- Values are written in double quotes with \ " [ ] escaped; $NAME stays live.
+- LIST_SETTINGS is defined once in flowgen.py and imported by
+  csv2config.py (sys.dont_write_bytecode, so no __pycache__ in flowgen/).
+- LibreOffice 6.4: set the Value column type to Text when opening.
+
 ## Config style (block.config.tcl)
 
 - Human-readable comments, each setting with an "Example:" block.
@@ -1981,6 +2286,8 @@ in examples/regression_out/ (gitignored, removed at the start). Cases:
   RTL_SEARCH_DIRS, SYN_SEARCH_DIRS, RTL_INCDIRS, bare names in source.f)
 - new_block: flowgen/configs/new_block.config.tcl with @BLOCK@ -> block,
   next to a copy of the example project config with PROJ_ROOT absolute
+- csv: flowgen/configs/block_template.config.csv through csv2config.py,
+  next to the same project config copy
 - template: block_template.config.tcl must be a valid config (--force,
   its /proj paths do not exist)
 Each case must print no WARNING/ERROR; the run directory must hold

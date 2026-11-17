@@ -22,6 +22,23 @@ Each command prints what to do next. `uart_ctrl` is your block's name.
 
 `common_files/` is the directory next to `flowgen/`. It holds your configs on your own machine: it is never packed into `bundle.txt`, and `unpack.py` never touches it. The commands can be run from any directory; the run directory is created in the current directory.
 
+### Or: fill in a spreadsheet
+
+Instead of editing the Tcl config, you can fill in a spreadsheet and convert it:
+
+```
+cp flowgen/configs/block_template.config.csv common_files/uart_ctrl.config.csv
+```
+
+Open `common_files/uart_ctrl.config.csv` in LibreOffice (in the import dialog set the Value column to Text), fill in the Value column and save it as CSV. Every setting has a Description and an Example column. One value per row; for a list, add more rows with the same Setting (or an empty Setting cell). An empty Value means "not set here", so the project config's value is used. Then:
+
+```
+flowgen/csv2config.py common_files/uart_ctrl.config.csv
+flowgen/runflowgen.sh uart_ctrl
+```
+
+`csv2config.py` writes `common_files/uart_ctrl.config.tcl`. It does not overwrite an existing file unless you add `--force`; once you use the CSV, edit the CSV and rerun it rather than editing the `.tcl`.
+
 ## Usage
 
 ```

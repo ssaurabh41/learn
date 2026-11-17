@@ -47,12 +47,14 @@ common_files/              golden block configs (LOCAL ONLY, never packed;
                            repo copy holds only a README)
 flowgen/
   flowgen.py               the generator
+  csv2config.py            <block>.config.csv -> <block>.config.tcl
   runflowgen.sh            tcsh wrapper: runs flowgen.py with python3
   README.md
   configs/
     block_template.config.tcl     reference listing every setting
     new_block.config.tcl          short block config written by --new
                                   (@BLOCK@ is replaced by the block name)
+    block_template.config.csv     spreadsheet version for csv2config.py
     project_template.config.tcl   copied to common_files/project.config.tcl
                                   by the first --new
 examples/                  placeholder design + configs for the regression
@@ -167,6 +169,32 @@ How it works:
   ($VAR expanded by csh at run time). ENV_SOURCE items may carry
   arguments after the file name.
 
+## csv2config.py (flowgen/)
+
+- `flowgen/csv2config.py [--force] [-o OUTPUT] <block>.config.csv` writes
+  <block>.config.tcl next to the CSV (normally common_files/). Refuses to
+  overwrite unless --force (decided: refuse unless --force). Once used,
+  the CSV is the master; the .tcl starts with
+  "# From <csv>. Edit the CSV and rerun csv2config.py."
+- Template: flowgen/configs/block_template.config.csv (common_files/ is
+  never shipped). The user copies it to common_files/<block>.config.csv.
+  Its values give the same config as --new (source project.config.tcl,
+  BLOCK, TOP_DESIGN, RTL_FILES, SYN_FILES, SVF_FILE).
+- CSV columns: Setting, Value, Required, Description, Example. Delimiter
+  , ; or tab (auto); UTF-8 with or without BOM; output must be ASCII.
+- One value per row; list settings take more rows with the same Setting
+  or an empty Setting cell (decided: one row per item). A single-value
+  setting repeated is an error. "# ..." rows are headings (written only
+  if a setting follows). Setting "source" writes `source "<file>"`.
+- An empty Value is left out of the output (not `set X {}`), so the
+  project config's value stays. Consequence: the CSV cannot clear a
+  project setting for one block; edit the .tcl for that.
+- Unknown names become helper variables (usable as $NAME).
+- Values are written in double quotes with \ " [ ] escaped; $NAME stays live.
+- LIST_SETTINGS is defined once in flowgen.py and imported by
+  csv2config.py (sys.dont_write_bytecode, so no __pycache__ in flowgen/).
+- LibreOffice 6.4: set the Value column type to Text when opening.
+
 ## Config style (block.config.tcl)
 
 - Human-readable comments, each setting with an "Example:" block.
@@ -252,6 +280,8 @@ in examples/regression_out/ (gitignored, removed at the start). Cases:
   RTL_SEARCH_DIRS, SYN_SEARCH_DIRS, RTL_INCDIRS, bare names in source.f)
 - new_block: flowgen/configs/new_block.config.tcl with @BLOCK@ -> block,
   next to a copy of the example project config with PROJ_ROOT absolute
+- csv: flowgen/configs/block_template.config.csv through csv2config.py,
+  next to the same project config copy
 - template: block_template.config.tcl must be a valid config (--force,
   its /proj paths do not exist)
 Each case must print no WARNING/ERROR; the run directory must hold

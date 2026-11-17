@@ -1,0 +1,35 @@
+Setting,Value,Required,Description,Example
+# HOW TO EDIT,,,"Copy this file to common_files/<block>.config.csv, edit the Value column, save as CSV, then run: flowgen/csv2config.py common_files/<block>.config.csv. One value per row. For a list, add more rows below with the same Setting name (or leave the Setting cell empty). Rows whose Setting starts with # are headings. An empty Value means not set here: the project config value or the default is used. LibreOffice: when opening, set the Value column type to Text so values like 4:0:0 are not changed.",
+# PROJECT SETTINGS,,,"Shared settings (PROJ_ROOT, libraries, tool setup) come from project.config.tcl.",
+source,project.config.tcl,yes,Read the project settings first. Everything below can change them for this block.,project.config.tcl
+# YOUR OWN VARIABLES,,,"Optional helper variables, used below as $NAME. flowgen does not need them.",
+BLOCK,block,,Name of the block's directory under $PROJ_ROOT.,uart_ctrl
+USER_RTL_DIR,,,Example helper variable. Leave empty if not used.,$PROJ_ROOT/$BLOCK/rtl
+# DESIGN,,,,
+TOP_DESIGN,block,yes,Top-level design (module) name.,uart_ctrl
+FLOWS,,,"Flows to generate, one row each. Default: rtl2syn (RTL vs synthesized netlist).",rtl2syn
+# RTL,,,,
+RTL_FORMAT,,,"RTL language: sverilog (default), verilog or vhdl.",verilog
+RTL_SEARCH_DIRS,,,"Directories searched, in order, for RTL file names without a full path (in RTL_FILES and inside .f files). One row per directory.",$PROJ_ROOT/$BLOCK/rtl
+RTL_FILES,$PROJ_ROOT/$BLOCK/rtl/source.f,yes,"RTL files or .f file lists, one row each. A .f file has one file per line; // and # start comments; $NAME is a config variable, else an environment variable.",block.sv
+RTL_INCDIRS,,,"Include directories for `include files, one row each. RTL file names are also looked up here. Not for vhdl.",$PROJ_ROOT/$BLOCK/rtl/include
+RTL_DEFINES,,,"Verilog macros, NAME or NAME=VALUE, one row each. Not for vhdl.",SYNTHESIS
+# NETLISTS,,,,
+SYN_SEARCH_DIRS,,,"Directories searched, in order, for netlist file names without a full path. One row per directory.",$PROJ_ROOT/$BLOCK/syn/outputs
+SYN_FILES,$PROJ_ROOT/$BLOCK/syn/outputs/$TOP_DESIGN.syn.v,yes (rtl2syn),"Synthesized netlist files or .f file lists, one row each.",block.syn.v
+APR_FILES,,,Place-and-route netlist files or .f file lists. Not used by rtl2syn.,$PROJ_ROOT/$BLOCK/apr/outputs/$TOP_DESIGN.apr.v
+# GUIDANCE AND CONSTRAINTS,,,,
+SVF_FILE,$PROJ_ROOT/$BLOCK/syn/outputs/$TOP_DESIGN.svf,,SVF guidance file from synthesis. Recommended for Formality. Leave empty if there is none.,$PROJ_ROOT/$BLOCK/syn/outputs/$TOP_DESIGN.svf
+SDC_FILES,,,"Timing constraint files, one row each. Not used by Formality.",$PROJ_ROOT/$BLOCK/constraints/$TOP_DESIGN.sdc
+UPF_FILES,,,"Power intent files, one row each. Not used by flowgen yet.",$PROJ_ROOT/$BLOCK/upf/$TOP_DESIGN.upf
+# SIMULATION MODELS AND BLACK BOXES,,,,
+SIM_FILES,,,"Verilog models for hard IPs or cells without a library model, one row each. Read into both reference and implementation.",/ip/pll/verilog/pll_top.v
+BLACKBOX_MODULES,,,"Modules to black box, one row each. Nothing is black boxed unless listed here.",pll_top
+# PROJECT SETTINGS FOR THIS BLOCK ONLY,,,Usually set in project.config.tcl. Fill a value only to change it for this block.,
+LIB_FORMAT,,,"Library file format: db (read_db) or lib (.lib or .lib.gz, read_lib).",db
+LIB_FILES,,,"Library files, one row each. Only these exact files are read. A value here replaces the project list.",/pdk/stdcell/db/stdcell_tt_0p80v_25c.db
+ENV_SOURCE,,,"Shell setup files sourced by the run script, one row each. Arguments may follow the file name.",/tools/synopsys/setup.cshrc
+ENV_SETENV(SNPSLMD_LICENSE_FILE),,,Environment variable set by the run script: ENV_SETENV(<NAME>). One row per variable.,27020@lic-server1
+TOOL_CMD(formality),,,Command that starts Formality. Default: fm_shell,/tools/synopsys/fm/bin/fm_shell
+"TOOL_SETTINGS(formality,hdlin_unresolved_modules)",,,"Any Formality variable: TOOL_SETTINGS(formality,<variable>), written as set_app_var. One row per variable.",black_box
+"TOOL_HOOKS(formality,pre_match)",,,"Your own Tcl file sourced in the Formality script. Hook points: setup, pre_match, pre_verify, post_verify.",$PROJ_ROOT/$BLOCK/fm/constants.tcl
