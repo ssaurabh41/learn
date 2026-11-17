@@ -198,7 +198,8 @@ How it works:
 ## Config style (block.config.tcl)
 
 - Human-readable comments, each setting with an "Example:" block.
-  No decorative separator characters.
+  No decorative separator characters. Example lines sit flush with the
+  "#" (`# set NAME {` / `#   "item"` / `# }`), no extra indent.
 - Single values in double quotes: `set TOP_DESIGN "block"`.
 - Lists in braces, one double-quoted item per line, 2-space indent:
   ```
