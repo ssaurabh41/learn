@@ -65,6 +65,8 @@ The config is plain Tcl. A block config starts with `source project.config.tcl`,
 - A name that looks like a misspelled setting (`BLACK_BOX_MODULES`, `top_design`) produces a warning. A tool name other than `formality` in `TOOL_CMD`, `TOOL_SETTINGS` or `TOOL_HOOKS` is an error.
 - Errors are all reported together, and nothing is generated if there are any.
 
+Regression: `examples/run_regression.csh` runs flowgen on the example design in `examples/` and on the `--new` template, and checks that nothing is missing and no warning is printed. Run it after unpacking a new bundle.
+
 Updating flowgen: unpack the new bundle with `python3 unpack.py --force bundle.txt`. It replaces `flowgen/` and leaves `common_files/` alone. If `flowgen/` holds files of your own, such as run directories, the old directory is kept as `flowgen.old_<date>_<time>` instead of being deleted.
 
 | Setting | Required | Meaning |

@@ -1,5 +1,239 @@
 #@@PACK 3
-#@@FILE flowgen/README.md mode=644 enc=text lines=91 eol=1 md5=75ffb33ea46deffc969244cfb0910cb0
+#@@FILE .gitignore mode=644 enc=text lines=4 eol=1 md5=cf6c63501651a7221be3e471cc91d086
+# Generated output (local, never packed)
+runs/
+*_formality/
+examples/regression_out/
+#@@END .gitignore
+#@@FILE examples/README.md mode=644 enc=text lines=26 eol=1 md5=be3d635fe914213d2fa8528190530459
+# examples
+
+A small placeholder design and its configs, used by the regression test.
+It follows the usual layout: `$PROJ_ROOT/<block>/rtl/source.f` and
+`$PROJ_ROOT/<block>/syn/outputs/<top>.syn.v`, with `PROJ_ROOT` set to this
+directory. The files only need to exist for flowgen: they are not a real
+library or a real synthesis result, so Formality itself will not pass on
+them.
+
+```
+configs/project.config.tcl   project settings (library, tool setup)
+configs/block.config.tcl     block config; uses the search dirs
+block/rtl/                   RTL, source.f, include/
+block/syn/outputs/           netlist and SVF
+pdk/stdcell_tt.db            placeholder library
+env/setup.cshrc              placeholder tool setup
+```
+
+Run the regression after every change to flowgen:
+
+```
+examples/run_regression.csh
+```
+
+It generates run directories under `examples/regression_out/` and checks
+that flowgen prints no warnings and that the run directories are complete.
+#@@END examples/README.md
+#@@FILE examples/block/rtl/block.sv mode=644 enc=text lines=15 eol=1 md5=e4c3b3f341fe68c721dbe8b392897c77
+// Example design for the flowgen regression: a register with enable.
+`include "block_defines.svh"
+
+module block
+  import block_pkg::*;
+(
+  input  logic             clk,
+  input  logic             en,
+  input  logic [WIDTH-1:0] d,
+  output logic [WIDTH-1:0] q
+);
+  always_ff @(posedge clk) begin
+    if (en) q <= d;
+  end
+endmodule
+#@@END examples/block/rtl/block.sv
+#@@FILE examples/block/rtl/block_pkg.sv mode=644 enc=text lines=4 eol=1 md5=5ce68f07a2be8f51620a03175074e52a
+// Example package for the flowgen regression design.
+package block_pkg;
+  localparam int WIDTH = `BLOCK_WIDTH;
+endpackage
+#@@END examples/block/rtl/block_pkg.sv
+#@@FILE examples/block/rtl/include/block_defines.svh mode=644 enc=text lines=2 eol=1 md5=0b4f2da2cab6ba2b3dcf10991a150dd8
+// Example include file for the flowgen regression design.
+`define BLOCK_WIDTH 4
+#@@END examples/block/rtl/include/block_defines.svh
+#@@FILE examples/block/rtl/source.f mode=644 enc=text lines=4 eol=1 md5=065caae4f02bd330b4de972492db945e
+// RTL file list for the example block.
+// File names only: they are found next to this file.
+block_pkg.sv
+block.sv
+#@@END examples/block/rtl/source.f
+#@@FILE examples/block/syn/outputs/block.svf mode=644 enc=text lines=1 eol=1 md5=869b26ca649d3ed28a1464fc8148a739
+# Placeholder SVF for the flowgen regression. A real SVF is written by synthesis.
+#@@END examples/block/syn/outputs/block.svf
+#@@FILE examples/block/syn/outputs/block.syn.v mode=644 enc=text lines=18 eol=1 md5=375512e614b0c41640fffe8de91d0c1a
+// Example synthesized netlist for the flowgen regression.
+// Cell names are placeholders; this is not a real library mapping.
+module block (clk, en, d, q);
+  input clk;
+  input en;
+  input [3:0] d;
+  output [3:0] q;
+  wire [3:0] n;
+
+  MUX2X1 u_mux0 (.A(q[0]), .B(d[0]), .S(en), .Y(n[0]));
+  MUX2X1 u_mux1 (.A(q[1]), .B(d[1]), .S(en), .Y(n[1]));
+  MUX2X1 u_mux2 (.A(q[2]), .B(d[2]), .S(en), .Y(n[2]));
+  MUX2X1 u_mux3 (.A(q[3]), .B(d[3]), .S(en), .Y(n[3]));
+  DFFQX1 u_q0 (.CK(clk), .D(n[0]), .Q(q[0]));
+  DFFQX1 u_q1 (.CK(clk), .D(n[1]), .Q(q[1]));
+  DFFQX1 u_q2 (.CK(clk), .D(n[2]), .Q(q[2]));
+  DFFQX1 u_q3 (.CK(clk), .D(n[3]), .Q(q[3]));
+endmodule
+#@@END examples/block/syn/outputs/block.syn.v
+#@@FILE examples/configs/block.config.tcl mode=644 enc=text lines=26 eol=1 md5=d67656a6012bbce2f9048c395af61edf
+# Block config for the example design (see examples/README.md).
+# It also uses the search directories: file names without a full path.
+
+source project.config.tcl
+
+set BLOCK "block"
+set TOP_DESIGN "block"
+
+set RTL_SEARCH_DIRS {
+  "$PROJ_ROOT/$BLOCK/rtl"
+}
+set RTL_FILES {
+  "source.f"
+}
+set RTL_INCDIRS {
+  "$PROJ_ROOT/$BLOCK/rtl/include"
+}
+
+set SYN_SEARCH_DIRS {
+  "$PROJ_ROOT/$BLOCK/syn/outputs"
+}
+set SYN_FILES {
+  "$TOP_DESIGN.syn.v"
+}
+
+set SVF_FILE "$PROJ_ROOT/$BLOCK/syn/outputs/$TOP_DESIGN.svf"
+#@@END examples/configs/block.config.tcl
+#@@FILE examples/configs/project.config.tcl mode=644 enc=text lines=14 eol=1 md5=08c446e958495115f11dfe8e4fed4a93
+# Project config for the example design (see examples/README.md).
+
+# Example project root: the examples/ directory, relative to this file.
+set PROJ_ROOT ".."
+
+set LIB_FORMAT "db"
+set LIB_FILES {
+  "$PROJ_ROOT/pdk/stdcell_tt.db"
+}
+
+set ENV_SOURCE {
+  "$PROJ_ROOT/env/setup.cshrc"
+}
+set ENV_SETENV(SNPSLMD_LICENSE_FILE) "27020@lic-server1"
+#@@END examples/configs/project.config.tcl
+#@@FILE examples/env/setup.cshrc mode=644 enc=text lines=2 eol=1 md5=9aa6946994117cdc3734b82abee95867
+# Placeholder tool setup for the flowgen regression.
+# On a real system this sets PATH etc. for the Synopsys tools.
+#@@END examples/env/setup.cshrc
+#@@FILE examples/pdk/stdcell_tt.db mode=644 enc=text lines=1 eol=1 md5=11c0989f5f33013bfa5a1d649566c67a
+Placeholder library for the flowgen regression. A real .db is a compiled Liberty library.
+#@@END examples/pdk/stdcell_tt.db
+#@@FILE examples/run_regression.csh mode=755 enc=text lines=91 eol=1 md5=b2caf6b883c21dd99072febceea7c403
+#!/bin/tcsh -f
+# Regression test for flowgen. Usage: examples/run_regression.csh
+# Needs python3 (3.6+ with tkinter) and tcsh on PATH.
+#
+# Each case generates a run directory in examples/regression_out/<case>/
+# (removed at the start) and must print no warnings or errors:
+#   example   examples/configs/block.config.tcl (uses the search dirs)
+#   new_block flowgen/configs/new_block.config.tcl, as --new writes it
+# The run directory must hold the run script (which must parse), the
+# Formality script, logs/, reports/ and copies of both configs.
+# Last, the reference template block_template.config.tcl must be valid
+# (its paths do not exist here, so it is run with --force).
+
+set here = "`dirname $0`"
+set root = "`cd $here/.. && pwd`"
+if ( "$root" == "" || ! -f "$root/flowgen/flowgen.py" ) then
+  echo "regression: cannot find the repo root from $0"
+  exit 2
+endif
+set flowgen = "$root/flowgen/flowgen.py"
+set out = "$root/examples/regression_out"
+if ( -d "$out" ) rm -rf "$out"
+mkdir -p "$out/configs"
+set fail = 0
+
+# Configs for the cases. The copies in regression_out/configs/ get the
+# example project config with PROJ_ROOT as a full path.
+set q = '"'
+sed "s|^set PROJ_ROOT .*|set PROJ_ROOT ${q}$root/examples${q}|" \
+  "$root/examples/configs/project.config.tcl" > "$out/configs/project.config.tcl"
+sed "s|@BLOCK@|block|g" "$root/flowgen/configs/new_block.config.tcl" \
+  > "$out/configs/new_block.config.tcl"
+
+foreach case ( example new_block )
+  if ( "$case" == "example" ) then
+    set config = "$root/examples/configs/block.config.tcl"
+  else
+    set config = "$out/configs/$case.config.tcl"
+  endif
+  mkdir -p "$out/$case"
+  cd "$out/$case"
+  python3 "$flowgen" "$config" >& flowgen.log
+  if ( $status != 0 ) then
+    echo "FAIL ${case}: flowgen failed (see $out/$case/flowgen.log)"
+    set fail = 1
+    continue
+  endif
+  grep -q -e "WARNING" -e "ERROR" flowgen.log
+  if ( $status == 0 ) then
+    echo "FAIL ${case}: flowgen printed warnings (see $out/$case/flowgen.log)"
+    set fail = 1
+    continue
+  endif
+  set rundir = "`ls -d $out/$case/*_block_formality`"
+  set casefail = 0
+  foreach f ( run_rtl2syn.csh rtl2syn/rtl2syn.tcl rtl2syn/logs rtl2syn/reports \
+              project.config.tcl `basename $config` )
+    if ( ! -e "$rundir/$f" ) then
+      echo "FAIL ${case}: missing $f in the run directory"
+      set casefail = 1
+    endif
+  end
+  tcsh -n "$rundir/run_rtl2syn.csh"
+  if ( $status != 0 ) then
+    echo "FAIL ${case}: run_rtl2syn.csh does not parse"
+    set casefail = 1
+  endif
+  if ( $casefail == 0 ) then
+    echo "PASS $case"
+  else
+    set fail = 1
+  endif
+end
+
+# The reference template must be a valid config.
+mkdir -p "$out/template"
+cd "$out/template"
+python3 "$flowgen" --force "$root/flowgen/configs/block_template.config.tcl" >& flowgen.log
+if ( $status != 0 ) then
+  echo "FAIL template: block_template.config.tcl is not a valid config (see $out/template/flowgen.log)"
+  set fail = 1
+else
+  echo "PASS template"
+endif
+
+if ( $fail != 0 ) then
+  echo "regression: FAILED"
+  exit 1
+endif
+echo "regression: PASSED"
+exit 0
+#@@END examples/run_regression.csh
+#@@FILE flowgen/README.md mode=644 enc=text lines=93 eol=1 md5=2eb44514bc38d04e4e3d2b41f054b54e
 # flowgen
 
 Generates EDA run directories from one Tcl block config. Python 3.6+ (with tkinter), standard library only.
@@ -66,6 +300,8 @@ The config is plain Tcl. A block config starts with `source project.config.tcl`,
 - A file name without a full path (in `RTL_FILES`, `SYN_FILES` or a `.f` file) is looked up next to the config or its `.f` file first, then in `RTL_SEARCH_DIRS` / `SYN_SEARCH_DIRS` in order, then (RTL only) in `RTL_INCDIRS` and `+incdir+` dirs. A name found in several places uses the first, with a warning; a name found nowhere is an error that lists the directories searched.
 - A name that looks like a misspelled setting (`BLACK_BOX_MODULES`, `top_design`) produces a warning. A tool name other than `formality` in `TOOL_CMD`, `TOOL_SETTINGS` or `TOOL_HOOKS` is an error.
 - Errors are all reported together, and nothing is generated if there are any.
+
+Regression: `examples/run_regression.csh` runs flowgen on the example design in `examples/` and on the `--new` template, and checks that nothing is missing and no warning is printed. Run it after unpacking a new bundle.
 
 Updating flowgen: unpack the new bundle with `python3 unpack.py --force bundle.txt`. It replaces `flowgen/` and leaves `common_files/` alone. If `flowgen/` holds files of your own, such as run directories, the old directory is kept as `flowgen.old_<date>_<time>` instead of being deleted.
 
@@ -1490,7 +1726,7 @@ def main(argv=None):
 if __name__ == "__main__":
     sys.exit(main())
 #@@END pack.py
-#@@FILE session.md mode=644 enc=text lines=269 eol=1 md5=825c1ee9967953ab28e9073c2ee55d64
+#@@FILE session.md mode=644 enc=text lines=288 eol=1 md5=196b140e01c2adbc648bedfd3d048706
 # Session handoff: flowgen (EDA flow generator)
 
 Paste this file into a new Claude Code session (or keep it in the repo root)
@@ -1548,6 +1784,8 @@ flowgen/
                                   (@BLOCK@ is replaced by the block name)
     project_template.config.tcl   copied to common_files/project.config.tcl
                                   by the first --new
+examples/                  placeholder design + configs for the regression
+  run_regression.csh
 docs/                      unrelated older docs (excluded from pack)
 ```
 
@@ -1733,6 +1971,23 @@ The Synopsys manuals are behind SolvNet; these are best-knowledge forms:
 4. Reading SIM_FILES with plain read_verilog -r / -i.
 5. `if {[verify]}` relying on verify returning 1 on success.
 6. save_session -replace and analyze_points -failing.
+
+## Regression
+
+`examples/run_regression.csh` (tcsh; python3 with tkinter on PATH). Output
+in examples/regression_out/ (gitignored, removed at the start). Cases:
+- example: examples/configs/block.config.tcl (sources
+  examples/configs/project.config.tcl, PROJ_ROOT ".." = examples/; uses
+  RTL_SEARCH_DIRS, SYN_SEARCH_DIRS, RTL_INCDIRS, bare names in source.f)
+- new_block: flowgen/configs/new_block.config.tcl with @BLOCK@ -> block,
+  next to a copy of the example project config with PROJ_ROOT absolute
+- template: block_template.config.tcl must be a valid config (--force,
+  its /proj paths do not exist)
+Each case must print no WARNING/ERROR; the run directory must hold
+run_rtl2syn.csh (parses with tcsh -n), rtl2syn/rtl2syn.tcl, logs/,
+reports/ and both config copies. Run it after every change.
+csh pitfall found here: "$var:" followed by a space is a modifier error;
+write "${var}:".
 
 ## Verification done in the cloud session (no Formality available)
 

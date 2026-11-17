@@ -55,6 +55,8 @@ flowgen/
                                   (@BLOCK@ is replaced by the block name)
     project_template.config.tcl   copied to common_files/project.config.tcl
                                   by the first --new
+examples/                  placeholder design + configs for the regression
+  run_regression.csh
 docs/                      unrelated older docs (excluded from pack)
 ```
 
@@ -240,6 +242,23 @@ The Synopsys manuals are behind SolvNet; these are best-knowledge forms:
 4. Reading SIM_FILES with plain read_verilog -r / -i.
 5. `if {[verify]}` relying on verify returning 1 on success.
 6. save_session -replace and analyze_points -failing.
+
+## Regression
+
+`examples/run_regression.csh` (tcsh; python3 with tkinter on PATH). Output
+in examples/regression_out/ (gitignored, removed at the start). Cases:
+- example: examples/configs/block.config.tcl (sources
+  examples/configs/project.config.tcl, PROJ_ROOT ".." = examples/; uses
+  RTL_SEARCH_DIRS, SYN_SEARCH_DIRS, RTL_INCDIRS, bare names in source.f)
+- new_block: flowgen/configs/new_block.config.tcl with @BLOCK@ -> block,
+  next to a copy of the example project config with PROJ_ROOT absolute
+- template: block_template.config.tcl must be a valid config (--force,
+  its /proj paths do not exist)
+Each case must print no WARNING/ERROR; the run directory must hold
+run_rtl2syn.csh (parses with tcsh -n), rtl2syn/rtl2syn.tcl, logs/,
+reports/ and both config copies. Run it after every change.
+csh pitfall found here: "$var:" followed by a space is a modifier error;
+write "${var}:".
 
 ## Verification done in the cloud session (no Formality available)
 
