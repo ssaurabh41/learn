@@ -60,7 +60,8 @@ The config is plain Tcl. A block config starts with `source project.config.tcl`,
 - Single values go in double quotes: `set TOP_DESIGN "block"`.
 - Lists go in braces, one double-quoted item per line. flowgen expands `$VARIABLES` inside list items.
 - Relative paths are resolved from the config file's directory (`common_files/`).
-- File lists (`RTL_FILES`, `SYN_FILES`, `APR_FILES`, `SIM_FILES`) accept `.f` files. A `.f` file holds one path per line, with `//` or `#` comments (at the start of a line or after a space). It may also contain `-f`, `-v`, `+incdir+` and `+define+`. `$VAR` in a `.f` file is an environment variable and must be set when flowgen runs. A file listed more than once is read once.
+- File lists (`RTL_FILES`, `SYN_FILES`, `APR_FILES`, `SIM_FILES`) accept `.f` files. A `.f` file holds one path per line, with `//` or `#` comments (at the start of a line or after a space). It may also contain `-f`, `-v`, `+incdir+` and `+define+`. `$VAR` in a `.f` file is a config variable (e.g. your own `USER_RTL_DIR`), else an environment variable; it must be set when flowgen runs. A file listed more than once is read once.
+- A file name without a full path (in `RTL_FILES`, `SYN_FILES` or a `.f` file) is looked up next to the config or its `.f` file first, then in `RTL_SEARCH_DIRS` / `SYN_SEARCH_DIRS` in order, then (RTL only) in `RTL_INCDIRS` and `+incdir+` dirs. A name found in several places uses the first, with a warning; a name found nowhere is an error that lists the directories searched.
 - A name that looks like a misspelled setting (`BLACK_BOX_MODULES`, `top_design`) produces a warning. A tool name other than `formality` in `TOOL_CMD`, `TOOL_SETTINGS` or `TOOL_HOOKS` is an error.
 - Errors are all reported together, and nothing is generated if there are any.
 
@@ -71,8 +72,10 @@ Updating flowgen: unpack the new bundle with `python3 unpack.py --force bundle.t
 | `TOP_DESIGN` | yes | top module |
 | `FLOWS` | | flows to generate (default `rtl2syn`) |
 | `RTL_FORMAT` | | `sverilog` (default), `verilog`, `vhdl` |
+| `RTL_SEARCH_DIRS` | | directories searched for RTL file names |
 | `RTL_FILES` | yes | RTL files or `.f` lists |
 | `RTL_INCDIRS`, `RTL_DEFINES` | | include dirs, macros |
+| `SYN_SEARCH_DIRS` | | directories searched for netlist file names |
 | `SYN_FILES` | yes (rtl2syn) | synthesized netlist files or `.f` lists |
 | `APR_FILES` | | APR netlist files (for future flows) |
 | `SVF_FILE` | | synthesis guidance file |

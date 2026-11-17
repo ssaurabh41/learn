@@ -65,10 +65,19 @@ set FLOWS {
 #   set RTL_FORMAT "sverilog"
 set RTL_FORMAT "sverilog"
 
+# Directories searched for RTL file names given without a full path, in
+# RTL_FILES and inside .f files. Optional. A name is tried next to the
+# config (or its .f file) first, then here in order, then in RTL_INCDIRS.
+# Example:
+#   set RTL_SEARCH_DIRS {
+#     "$PROJ_ROOT/block/rtl"
+#   }
+set RTL_SEARCH_DIRS {}
+
 # RTL source files. Required. Each item is either a source file or a
 # file list ending in .f (one file path per line, // or # for comments;
 # relative paths inside a .f file are relative to the .f file; $VAR inside
-# a .f file is an environment variable).
+# a .f file is a config variable, else an environment variable).
 # Example with files:
 #   set RTL_FILES {
 #     "$PROJ_ROOT/block/rtl/block_pkg.sv"
@@ -83,6 +92,7 @@ set RTL_FILES {
 }
 
 # Include directories for `include files. Optional. Not for vhdl.
+# RTL file names are also looked up here, after RTL_SEARCH_DIRS.
 # Example:
 #   set RTL_INCDIRS {
 #     "$PROJ_ROOT/block/rtl/include"
@@ -99,6 +109,14 @@ set RTL_DEFINES {}
 
 
 # NETLISTS
+
+# Directories searched for netlist file names given without a full path,
+# in SYN_FILES and inside .f files. Optional.
+# Example:
+#   set SYN_SEARCH_DIRS {
+#     "$PROJ_ROOT/block/syn/outputs"
+#   }
+set SYN_SEARCH_DIRS {}
 
 # Synthesized netlist files (or .f file lists). Required for rtl2syn.
 # Example:

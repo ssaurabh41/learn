@@ -79,8 +79,8 @@ FM = "formality"          # tool key in TOOL_SETTINGS / TOOL_CMD / TOOL_HOOKS
 # typo warning; any other name is treated as a user helper variable.
 KNOWN_VARS = (
     "TOP_DESIGN", "FLOWS",
-    "RTL_FORMAT", "RTL_FILES", "RTL_INCDIRS", "RTL_DEFINES",
-    "SYN_FILES", "APR_FILES", "SVF_FILE", "SDC_FILES", "UPF_FILES",
+    "RTL_FORMAT", "RTL_SEARCH_DIRS", "RTL_FILES", "RTL_INCDIRS", "RTL_DEFINES",
+    "SYN_SEARCH_DIRS", "SYN_FILES", "APR_FILES", "SVF_FILE", "SDC_FILES", "UPF_FILES",
     "LIB_FORMAT", "LIB_FILES", "SIM_FILES", "BLACKBOX_MODULES",
     "TOOL_CMD", "TOOL_SETTINGS", "TOOL_HOOKS",
     "ENV_SOURCE", "ENV_SETENV",
@@ -200,8 +200,8 @@ class Config(object):
 
         # Design data
         self.rtl_format = self.choice("RTL_FORMAT", RTL_READERS, default="sverilog")
-        self.rtl = self.fileset("RTL_FILES", required=True)
-        add_unique(self.rtl.incdirs, self.paths("RTL_INCDIRS"))
+        self.rtl = self.fileset("RTL_FILES", "RTL_SEARCH_DIRS", required=True,
+                                incdirs=self.paths("RTL_INCDIRS"))
         add_unique(self.rtl.defines, self.tcl_list("RTL_DEFINES"))
         for item in self.rtl.incdirs + self.rtl.defines:
             if re.search(r"\s", item):
@@ -211,7 +211,7 @@ class Config(object):
             self.errors.append("RTL_INCDIRS / RTL_DEFINES (or +incdir+/+define+ in a .f "
                                "file) only apply to verilog/sverilog")
         needs_syn = "rtl2syn" in self.flows
-        self.syn = self.fileset("SYN_FILES", required=needs_syn, netlist=True)
+        self.syn = self.fileset("SYN_FILES", "SYN_SEARCH_DIRS", required=needs_syn, netlist=True)
         # APR_FILES, SDC_FILES and UPF_FILES are not read by any flow yet,
         # so their files are not checked.
         self.apr = self.tcl_list("APR_FILES")
@@ -366,31 +366,90 @@ class Config(object):
     def paths(self, name, required=False):
         return [self.resolve(name, p) for p in self.tcl_list(name, required=required)]
 
-    def fileset(self, name, required=False, netlist=False):
-        """Files from a list variable; entries ending in .f are file lists."""
+    def search_dirs(self, name):
+        """Directories of a *_SEARCH_DIRS setting (missing ones are file errors)."""
+        dirs = []
+        for d in self.paths(name):
+            if os.path.exists(d) and not os.path.isdir(d):
+                self.errors.append("%s: not a directory: %s" % (name, d))
+            else:
+                add_unique(dirs, [d])
+        return dirs
+
+    def find(self, label, path, search, base=None):
+        """Locate a file. A full path is used as given. A relative one is
+        tried next to base (the .f file, or the config), then in the search
+        dirs in order; the first match wins. Not found anywhere is an error,
+        or a warning with --force."""
+        path = os.path.expanduser(path)
+        base = base or self.dir
+        if os.path.isabs(path):
+            return self.resolve(label, path)
+        dirs = []
+        add_unique(dirs, [base] + list(search))
+        found = []
+        add_unique(found, [os.path.normpath(os.path.join(d, path)) for d in dirs
+                           if os.path.exists(os.path.join(d, path))])
+        if len(found) > 1:
+            self.warnings.append("%s: %s found in several places, using %s"
+                                 % (label, path, found[0]))
+        if found:
+            return found[0]
+        self.file_error("%s: file not found: %s (searched: %s)" % (label, path, ", ".join(dirs)))
+        return os.path.normpath(os.path.join(base, path))
+
+    def expand(self, text):
+        """$NAME / ${NAME} in a .f file: config variables first, then
+        environment variables. Unknown names are left in place."""
+        def value(m):
+            name = m.group(1) or m.group(2)
+            config_value = self._raw.get(name)
+            if isinstance(config_value, str):
+                return config_value
+            return os.environ.get(name, m.group(0))
+        return re.sub(r"\$\{(\w+)\}|\$(\w+)", value, text)
+
+    def fileset(self, name, search_var=None, required=False, netlist=False, incdirs=()):
+        """Files from a list variable; entries ending in .f are file lists.
+
+        A file name without a full path is looked up next to the config (or
+        next to its .f file), then in the search_var dirs, then in the
+        include dirs (incdirs plus +incdir+ from the .f files).
+        """
         result = FileSet()
+        add_unique(result.incdirs, list(incdirs))
+        search = self.search_dirs(search_var) if search_var else []
         problems = self.file_problems
-        items = self.paths(name, required=required)
+        items = self.tcl_list(name, required=required)
+        # Read every .f file first, so +incdir+ dirs from anywhere in them
+        # are known before any file name is looked up.
+        refs = []                        # (label for messages, file name, base dir)
         for item in items:
             if item.endswith(".f"):
-                self.read_filelist(name, item, result, [])
+                self.read_filelist(name, self.find(name, item, search), result, refs,
+                                   [], search)
             else:
-                add_unique(result.files, [item])
+                refs.append((name, item, None))
         if netlist and (result.incdirs or result.defines):
             self.warnings.append("%s: +incdir+/+define+ in a .f file ignored for netlists" % name)
             result.incdirs, result.defines = [], []
+        lookup = list(search)
+        add_unique(lookup, result.incdirs)
+        for label, ref, base in refs:
+            add_unique(result.files, [self.find(label, ref, lookup, base)])
         if required and items and not result.files and self.file_problems == problems:
             self.errors.append("%s: the .f file lists contain no files" % name)
         return result
 
-    def read_filelist(self, name, path, result, stack):
-        """Expand a .f file: one path per line, // or # comments, $VAR expanded.
+    def read_filelist(self, name, path, result, refs, stack, search):
+        """Read a .f file: one name per line, // or # comments.
 
         A comment starts with // or # at the start of a line or after a
-        space. $VAR and ${VAR} come from the environment. Also understands
-        -f/-F <file> (nested lists), -v <file>, +incdir+<dir>[+<dir>...]
-        and +define+<MACRO>[=<value>][+...]. Relative paths are relative to
-        the .f file's directory. A file listed more than once is read once.
+        space. $VAR and ${VAR} are config variables, then environment
+        variables. Also understands -f/-F <file> (nested lists), -v <file>,
+        +incdir+<dir>[+<dir>...] and +define+<MACRO>[=<value>][+...].
+        File names go to refs and are looked up later (see fileset);
+        +incdir+ dirs and nested .f files are relative to this .f file.
         """
         label = "%s (%s)" % (name, os.path.basename(path))
         real = os.path.realpath(path)
@@ -398,7 +457,7 @@ class Config(object):
             self.errors.append("%s: file list includes itself" % label)
             return
         if not os.path.exists(path):
-            return                       # already reported by resolve()
+            return                       # already reported by find()
         try:
             with open(path, encoding="ascii", errors="replace") as fh:
                 lines = fh.readlines()
@@ -413,9 +472,10 @@ class Config(object):
             where = "%s line %d" % (label, lineno)
             tokens = []
             for tok in line.split():
-                tok = os.path.expandvars(tok)
+                tok = self.expand(tok)
                 if "$" in tok:
-                    self.errors.append("%s: environment variable not set in: %s" % (where, tok))
+                    self.errors.append("%s: variable not set in the config or the "
+                                       "environment: %s" % (where, tok))
                 else:
                     tokens.append(tok)
             i = 0
@@ -428,12 +488,11 @@ class Config(object):
                     if tok == "-y":
                         self.warnings.append("%s: -y library directories are not supported, "
                                              "ignored: %s" % (where, tokens[i + 1]))
+                    elif tok == "-v":
+                        refs.append((where, tokens[i + 1], base))
                     else:
-                        arg = self.resolve(where, tokens[i + 1], base)
-                        if tok == "-v":
-                            add_unique(result.files, [arg])
-                        else:
-                            self.read_filelist(name, arg, result, stack + [real])
+                        self.read_filelist(name, self.find(where, tokens[i + 1], search, base),
+                                           result, refs, stack + [real], search)
                     i += 2
                     continue
                 if tok.startswith("+incdir+"):
@@ -445,7 +504,7 @@ class Config(object):
                 elif tok.startswith(("-", "+")):
                     self.warnings.append("%s: option %s not supported, ignored" % (where, tok))
                 else:
-                    add_unique(result.files, [self.resolve(where, tok, base)])
+                    refs.append((where, tok, base))
                 i += 1
 
 

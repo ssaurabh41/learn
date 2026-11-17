@@ -152,10 +152,15 @@ How it works:
   setting (difflib, e.g. BLACK_BOX_MODULES, top_design) produce a typo
   warning. A tool key other than "formality" is an error.
 - .f file lists are expanded by flowgen: one path per line, // and #
-  comments (line start or after a space), $VAR from the environment
-  (unset is an error), relative to the .f file. Supports nested -f/-F,
+  comments (line start or after a space), $VAR from the config variables,
+  then the environment (unset is an error), relative to the .f file. Supports nested -f/-F,
   -v, +incdir+, +define+. Duplicates are dropped. -y and other options
   are ignored with a warning.
+- File name lookup (RTL_FILES, SYN_FILES, names inside .f files): next to
+  the config or the .f file first, then *_SEARCH_DIRS in order, then (RTL
+  only) RTL_INCDIRS and +incdir+ dirs. All .f files are read before any
+  lookup. First match wins (warning if several); not found anywhere is a
+  file error listing the dirs searched.
 - ENV_SETENV entries are written in config order with double quotes
   ($VAR expanded by csh at run time). ENV_SOURCE items may carry
   arguments after the file name.
@@ -188,8 +193,10 @@ Settings:
 | TOP_DESIGN | yes | top module |
 | FLOWS | | flows to generate, default rtl2syn |
 | RTL_FORMAT | | sverilog (default), verilog, vhdl |
+| RTL_SEARCH_DIRS | | dirs searched for RTL file names |
 | RTL_FILES | yes | RTL files or .f lists |
 | RTL_INCDIRS, RTL_DEFINES | | include dirs, macros (not for vhdl) |
+| SYN_SEARCH_DIRS | | dirs searched for netlist file names |
 | SYN_FILES | yes for rtl2syn | synthesized netlist files or .f lists |
 | APR_FILES | | APR netlist (future flows) |
 | SVF_FILE | | synthesis guidance |
@@ -258,5 +265,5 @@ The Synopsys manuals are behind SolvNet; these are best-knowledge forms:
 
 ## Git
 
-- Branch: claude/chat-session-8t1llt on github.com/ssaurabh41/learn.
+- Branch: main on github.com/ssaurabh41/learn (work goes directly to main).
 - Commit after each change, regenerate bundle.txt, push.
