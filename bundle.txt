@@ -243,7 +243,7 @@ endif
 echo "regression: PASSED"
 exit 0
 #@@END examples/run_regression.csh
-#@@FILE flowgen/README.md mode=644 enc=text lines=110 eol=1 md5=3f8a5fe511eb827470333a13bbac12ba
+#@@FILE flowgen/README.md mode=644 enc=text lines=110 eol=1 md5=4370b73f5c7c54f6b5a274cdd4ed5d22
 # flowgen
 
 Generates EDA run directories from one Tcl block config. Python 3.6+ (with tkinter), standard library only.
@@ -330,7 +330,7 @@ The config is plain Tcl. A block config starts with `source project.config.tcl`,
 
 Regression: `examples/run_regression.csh` runs flowgen on the example design in `examples/` and on the `--new` template, and checks that nothing is missing and no warning is printed. Run it after unpacking a new bundle.
 
-Updating flowgen: unpack the new bundle with `python3 unpack.py --force bundle.txt`. It replaces `flowgen/`. If `flowgen/` holds files of your own, such as your configs in `flowgen/configs/` or run directories, the old directory is kept as `flowgen.old_<date>_<time>` instead of being deleted. Copy your configs back: `cp flowgen.old_<date>_<time>/configs/*.config.* flowgen/configs/` (the shipped templates are named `*_template.*` and `new_block.config.tcl`; do not copy those back).
+Updating flowgen: unpack the new bundle with `python3 unpack.py --force bundle.txt`. It replaces `flowgen/`. If `flowgen/` holds files of your own, such as your configs in `flowgen/configs/` or run directories, the old directory is kept as `flowgen.old_<date>_<time>` instead of being deleted. Copy your configs back: `cp -n flowgen.old_<date>_<time>/configs/*.config.* flowgen/configs/`. `-n` skips files that already exist, so the new shipped templates (`*_template.*`, `new_block.config.tcl`) are kept and only your own configs are copied.
 
 | Setting | Required | Meaning |
 |---|---|---|
@@ -721,7 +721,7 @@ set ENV_SOURCE {}
 # Example:
 # set TOOL_SETTINGS(formality,verification_timeout_limit) "4:0:0"
 #@@END flowgen/configs/project_template.config.tcl
-#@@FILE flowgen/csv2config.py mode=755 enc=text lines=203 eol=1 md5=72fd16618b7e12ed03b752e91d09e6a5
+#@@FILE flowgen/csv2config.py mode=755 enc=text lines=216 eol=1 md5=985bfcd1fb1a6f411814a856537601a4
 #!/usr/bin/env python3
 """csv2config - turn a block config spreadsheet (CSV) into a block config.
 
@@ -769,7 +769,7 @@ import textwrap
 
 sys.dont_write_bytecode = True        # no __pycache__/ in flowgen/ (unpack.py
                                       # would treat it as a file of yours)
-from flowgen import LIST_SETTINGS     # flowgen.py in the same directory
+from flowgen import LIST_SETTINGS, CONFIG_DIR, CONFIG_SUFFIX   # flowgen.py, same directory
 
 NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\([^()\s]+\))?\Z")
 COLUMNS = ("setting", "value", "required", "description", "example")
@@ -916,17 +916,30 @@ def main(argv=None):
     with open(output, "w", encoding="ascii", newline="\n") as fh:
         fh.write(text)
     print("csv2config: wrote %s" % output)
-    block = os.path.basename(output)
-    if block.endswith(".config.tcl"):
-        print("csv2config: next, generate the run directory: runflowgen.sh %s"
-              % block[:-len(".config.tcl")])
+    # A block name only works for a config in flowgen/configs/; anywhere
+    # else give the path itself.
+    name = os.path.basename(output)
+    in_configs = (os.path.realpath(os.path.dirname(os.path.abspath(output)))
+                  == os.path.realpath(CONFIG_DIR))
+    if in_configs and name.endswith(CONFIG_SUFFIX):
+        arg = name[:-len(CONFIG_SUFFIX)]
+    else:
+        arg = shell_word(output)
+    print("csv2config: next, generate the run directory: runflowgen.sh %s" % arg)
     return 0
+
+
+def shell_word(text):
+    """text as one csh word: as is if plain, else in single quotes."""
+    if re.match(r"^[A-Za-z0-9_./:+-]+\Z", text):
+        return text
+    return "'" + text.replace("'", "'\\''") + "'"
 
 
 if __name__ == "__main__":
     sys.exit(main())
 #@@END flowgen/csv2config.py
-#@@FILE flowgen/flowgen.py mode=755 enc=text lines=893 eol=1 md5=640957a0b815b510648910a2798dd601
+#@@FILE flowgen/flowgen.py mode=755 enc=text lines=894 eol=1 md5=7d63130af89e043ce4105fcaa325fa7f
 #!/usr/bin/env python3
 """flowgen - generate EDA run directories from a Tcl block config.
 
@@ -1643,15 +1656,16 @@ def gen_run_script(cfg, flow):
         "endif",
         'cd "$here/$flow"',
         "",
+        "# The old result is removed first, so a setup problem or a tool that",
+        "# fails to start is not reported with the result of an earlier run.",
+        "rm -f ${flow}.status",
+        "",
         "# Environment",
     ]
     lines += env_lines(cfg)
     lines += [
         "",
         "# Run the tool. Input from /dev/null so it exits if the script stops early.",
-        "# The old result is removed first, so a tool that fails to start is not",
-        "# reported with the result of an earlier run.",
-        "rm -f ${flow}.status",
         "%s -f ${flow}.tcl < /dev/null |& tee logs/${flow}.log" % tool_cmd,
         "",
         "if ( ! -e ${flow}.status ) then",

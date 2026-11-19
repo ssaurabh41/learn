@@ -714,15 +714,16 @@ def gen_run_script(cfg, flow):
         "endif",
         'cd "$here/$flow"',
         "",
+        "# The old result is removed first, so a setup problem or a tool that",
+        "# fails to start is not reported with the result of an earlier run.",
+        "rm -f ${flow}.status",
+        "",
         "# Environment",
     ]
     lines += env_lines(cfg)
     lines += [
         "",
         "# Run the tool. Input from /dev/null so it exits if the script stops early.",
-        "# The old result is removed first, so a tool that fails to start is not",
-        "# reported with the result of an earlier run.",
-        "rm -f ${flow}.status",
         "%s -f ${flow}.tcl < /dev/null |& tee logs/${flow}.log" % tool_cmd,
         "",
         "if ( ! -e ${flow}.status ) then",

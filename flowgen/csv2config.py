@@ -45,7 +45,7 @@ import textwrap
 
 sys.dont_write_bytecode = True        # no __pycache__/ in flowgen/ (unpack.py
                                       # would treat it as a file of yours)
-from flowgen import LIST_SETTINGS     # flowgen.py in the same directory
+from flowgen import LIST_SETTINGS, CONFIG_DIR, CONFIG_SUFFIX   # flowgen.py, same directory
 
 NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\([^()\s]+\))?\Z")
 COLUMNS = ("setting", "value", "required", "description", "example")
@@ -192,11 +192,24 @@ def main(argv=None):
     with open(output, "w", encoding="ascii", newline="\n") as fh:
         fh.write(text)
     print("csv2config: wrote %s" % output)
-    block = os.path.basename(output)
-    if block.endswith(".config.tcl"):
-        print("csv2config: next, generate the run directory: runflowgen.sh %s"
-              % block[:-len(".config.tcl")])
+    # A block name only works for a config in flowgen/configs/; anywhere
+    # else give the path itself.
+    name = os.path.basename(output)
+    in_configs = (os.path.realpath(os.path.dirname(os.path.abspath(output)))
+                  == os.path.realpath(CONFIG_DIR))
+    if in_configs and name.endswith(CONFIG_SUFFIX):
+        arg = name[:-len(CONFIG_SUFFIX)]
+    else:
+        arg = shell_word(output)
+    print("csv2config: next, generate the run directory: runflowgen.sh %s" % arg)
     return 0
+
+
+def shell_word(text):
+    """text as one csh word: as is if plain, else in single quotes."""
+    if re.match(r"^[A-Za-z0-9_./:+-]+\Z", text):
+        return text
+    return "'" + text.replace("'", "'\\''") + "'"
 
 
 if __name__ == "__main__":

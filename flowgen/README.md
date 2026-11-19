@@ -84,7 +84,7 @@ The config is plain Tcl. A block config starts with `source project.config.tcl`,
 
 Regression: `examples/run_regression.csh` runs flowgen on the example design in `examples/` and on the `--new` template, and checks that nothing is missing and no warning is printed. Run it after unpacking a new bundle.
 
-Updating flowgen: unpack the new bundle with `python3 unpack.py --force bundle.txt`. It replaces `flowgen/`. If `flowgen/` holds files of your own, such as your configs in `flowgen/configs/` or run directories, the old directory is kept as `flowgen.old_<date>_<time>` instead of being deleted. Copy your configs back: `cp flowgen.old_<date>_<time>/configs/*.config.* flowgen/configs/` (the shipped templates are named `*_template.*` and `new_block.config.tcl`; do not copy those back).
+Updating flowgen: unpack the new bundle with `python3 unpack.py --force bundle.txt`. It replaces `flowgen/`. If `flowgen/` holds files of your own, such as your configs in `flowgen/configs/` or run directories, the old directory is kept as `flowgen.old_<date>_<time>` instead of being deleted. Copy your configs back: `cp -n flowgen.old_<date>_<time>/configs/*.config.* flowgen/configs/`. `-n` skips files that already exist, so the new shipped templates (`*_template.*`, `new_block.config.tcl`) are kept and only your own configs are copied.
 
 | Setting | Required | Meaning |
 |---|---|---|
