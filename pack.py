@@ -9,8 +9,8 @@ current directory if not in git). In a git repo only tracked files are
 packed, as they are on disk, with the file mode recorded in git; files
 that are not committed are listed in a warning. Outside a git repo every
 file under ROOT is packed. Paths under EXCLUDE_DIRS are never packed:
-docs/, and common_files/ (the golden block configs live only on the
-user's machine).
+docs/, and common_files/ (local files that live only on the user's
+machine).
 
 The bundle is pure ASCII, so it survives copy/paste, downloads and CRLF
 line endings. Pure-ASCII text files are stored as readable lines; any other

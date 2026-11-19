@@ -6,9 +6,9 @@ Usage:
 
 Arguments:
     CSV       The block config spreadsheet, <block>.config.csv, normally in
-              common_files/. Start from configs/block_template.config.csv:
+              flowgen/configs/. Start from configs/block_template.config.csv:
                 cp flowgen/configs/block_template.config.csv \\
-                   common_files/uart_ctrl.config.csv
+                   flowgen/configs/uart_ctrl.config.csv
               Edit it in LibreOffice (when opening, set the Value column to
               Text) and save it as CSV.
     -o        Output file. Default: the CSV name with .csv replaced by
@@ -18,7 +18,7 @@ Arguments:
     -h        Show this help and exit.
 
 Example:
-    csv2config.py common_files/uart_ctrl.config.csv
+    csv2config.py flowgen/configs/uart_ctrl.config.csv
     runflowgen.sh uart_ctrl
 
 CSV columns: Setting, Value, Required, Description, Example.

@@ -43,8 +43,9 @@ bundle.txt                 all packed files (copy this to the workstation)
 pack.py                    packs git-tracked files into bundle.txt
 unpack.py                  recreates files from bundle.txt
 session.md                 this file
-common_files/              golden block configs (LOCAL ONLY, never packed;
-                           repo copy holds only a README)
+common_files/              local files (LOCAL ONLY, never packed; repo
+                           copy holds only a README). No longer read by
+                           flowgen (2026-11-19).
 flowgen/
   flowgen.py               the generator
   csv2config.py            <block>.config.csv -> <block>.config.tcl
@@ -55,18 +56,20 @@ flowgen/
     new_block.config.tcl          short block config written by --new
                                   (@BLOCK@ is replaced by the block name)
     block_template.config.csv     spreadsheet version for csv2config.py
-    project_template.config.tcl   copied to common_files/project.config.tcl
+    project_template.config.tcl   copied to configs/project.config.tcl
                                   by the first --new
 examples/                  placeholder design + configs for the regression
   run_regression.csh
 docs/                      unrelated older docs (excluded from pack)
 ```
 
-On the workstation the configs live only in common_files/, next to
-flowgen/: project.config.tcl (shared settings) and <block>.config.tcl.
-flowgen reads them from there. There are no config links any more
-(decided 2026-11-13: one place, one name, no unpack --force to register
-a config).
+On the workstation the configs live in flowgen/configs/, next to the
+templates: project.config.tcl (shared settings) and <block>.config.tcl.
+flowgen reads them only from there (decided 2026-11-19, replacing
+common_files/; user accepted that unpack --force then moves them to
+flowgen.old_<date>_<time>/configs/, from where the user copies them back).
+block_names() skips the shipped templates (TEMPLATE_CONFIGS). There are
+no config links.
 
 ## pack.py / unpack.py
 
@@ -106,12 +109,12 @@ Usage:
 runflowgen.sh --new BLOCK
 runflowgen.sh [--force] BLOCK
 ```
-- --new BLOCK: writes common_files/BLOCK.config.tcl from
+- --new BLOCK: writes configs/BLOCK.config.tcl from
   configs/new_block.config.tcl and, if missing,
-  common_files/project.config.tcl from configs/project_template.config.tcl,
+  configs/project.config.tcl from configs/project_template.config.tcl,
   then prints what to edit and the generate command. Never overwrites.
-- BLOCK: reads common_files/BLOCK.config.tcl (common_files/ is found
-  next to the flowgen/ directory of the running flowgen.py). A path to
+- BLOCK: reads configs/BLOCK.config.tcl (configs/ is found next to
+  the running flowgen.py). A path to
   a config file is also accepted. With an unknown block the error lists
   the blocks that have a config.
 - After generating, flowgen prints the run script to launch and where
@@ -148,7 +151,7 @@ How it works:
   the working directory set to the config's real directory. Only global
   variables created by the config are read; arrays become dicts.
 - Config path is resolved with realpath, so relative paths are relative
-  to the config's real directory (common_files/).
+  to the config's real directory (flowgen/configs/).
 - `$VARIABLES` inside braced list items are expanded by flowgen
   (Tcl `subst -nocommands -nobackslashes`).
 - All values are validated; all errors are reported together; nothing is
@@ -172,12 +175,12 @@ How it works:
 ## csv2config.py (flowgen/)
 
 - `flowgen/csv2config.py [--force] [-o OUTPUT] <block>.config.csv` writes
-  <block>.config.tcl next to the CSV (normally common_files/). Refuses to
+  <block>.config.tcl next to the CSV (normally flowgen/configs/). Refuses to
   overwrite unless --force (decided: refuse unless --force). Once used,
   the CSV is the master; the .tcl starts with
   "# From <csv>. Edit the CSV and rerun csv2config.py."
-- Template: flowgen/configs/block_template.config.csv (common_files/ is
-  never shipped). The user copies it to common_files/<block>.config.csv.
+- Template: flowgen/configs/block_template.config.csv. The user copies
+  it to flowgen/configs/<block>.config.csv.
   Its values give the same config as --new (source project.config.tcl,
   BLOCK, TOP_DESIGN, RTL_FILES, SYN_FILES, SVF_FILE).
 - CSV columns: Setting, Value, Required, Description, Example. Delimiter

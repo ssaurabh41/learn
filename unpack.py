@@ -5,14 +5,15 @@ Usage:
     unpack.py BUNDLE [-d DIR] [--force] [--list]
 
 Files are written under DIR (default: current directory). Your block
-configs live in DIR/common_files/, next to flowgen/; flowgen reads them
-from there, so unpack never has to be run again for a new config.
+configs live in DIR/flowgen/configs/, next to the templates; flowgen reads
+them from there, so unpack never has to be run again for a new config.
 
 If a top-level directory from the bundle (flowgen/) already exists in DIR,
 unpack stops with an error and changes nothing. With --force that directory
 is removed first and recreated from the bundle, so no stale files are left
 behind. If it holds files of your own (anything that is not in the bundle,
-e.g. run directories), it is not deleted but renamed to flowgen.old_<date>_<time>. Nothing else in DIR is removed:
+e.g. your configs or run directories), it is not deleted but renamed to
+flowgen.old_<date>_<time>; copy your configs back from its configs/. Nothing else in DIR is removed:
 common_files/ is never in a bundle and is never touched. Top-level files
 (pack.py, unpack.py) are overwritten.
 

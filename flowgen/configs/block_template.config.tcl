@@ -3,8 +3,8 @@
 # This file is the reference: it lists every setting flowgen understands.
 # You do not need to copy it. Start a block with
 #   runflowgen.sh --new <block>
-# which creates a short common_files/<block>.config.tcl (and, the first
-# time, common_files/project.config.tcl with the settings shared by all
+# which creates a short configs/<block>.config.tcl (and, the first
+# time, configs/project.config.tcl with the settings shared by all
 # blocks). Then copy from here only the settings you need. A setting can
 # go in the project config (all blocks) or in a block config (one block).
 #
@@ -19,7 +19,7 @@
 # You can use your own helper variables (like PROJ_ROOT below) and
 # environment variables ($env(HOME)) inside values and list items.
 # Relative paths are relative to the directory the config file is in
-# (common_files/).
+# (flowgen/configs/).
 #
 # Generate the run directory with:
 #   runflowgen.sh <block>

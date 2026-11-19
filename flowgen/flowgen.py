@@ -10,11 +10,11 @@ Usage:
 
 Arguments:
     --new BLOCK
-              Start a new block: create common_files/BLOCK.config.tcl (and
-              common_files/project.config.tcl, the settings shared by all
+              Start a new block: create configs/BLOCK.config.tcl (and
+              configs/project.config.tcl, the settings shared by all
               blocks, if it does not exist yet), then say what to edit.
-    BLOCK     The block to generate: reads common_files/BLOCK.config.tcl.
-              common_files/ is the directory next to flowgen/. A path to a
+    BLOCK     The block to generate: reads configs/BLOCK.config.tcl.
+              configs/ is the directory next to flowgen.py. A path to a
               config file is also accepted.
     --force  Generate the run directory even if input files are missing
               or a .f file list cannot be read. Without it those are
@@ -97,13 +97,17 @@ LIST_SETTINGS = (
 
 IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
 
-# Where things live: <root>/flowgen/flowgen.py, <root>/common_files/<block>.config.tcl
+# Where things live: flowgen/flowgen.py, flowgen/configs/<block>.config.tcl
+# (next to the templates)
 TOOL_DIR = os.path.dirname(os.path.realpath(__file__))
-CONFIG_DIR = os.path.join(os.path.dirname(TOOL_DIR), "common_files")
+CONFIG_DIR = os.path.join(TOOL_DIR, "configs")
 CONFIG_SUFFIX = ".config.tcl"
 PROJECT_CONFIG = "project" + CONFIG_SUFFIX
-NEW_BLOCK_TEMPLATE = os.path.join(TOOL_DIR, "configs", "new_block" + CONFIG_SUFFIX)
-PROJECT_TEMPLATE = os.path.join(TOOL_DIR, "configs", "project_template" + CONFIG_SUFFIX)
+NEW_BLOCK_TEMPLATE = os.path.join(CONFIG_DIR, "new_block" + CONFIG_SUFFIX)
+PROJECT_TEMPLATE = os.path.join(CONFIG_DIR, "project_template" + CONFIG_SUFFIX)
+# Shipped templates in CONFIG_DIR, not blocks
+TEMPLATE_CONFIGS = ("new_block" + CONFIG_SUFFIX, "project_template" + CONFIG_SUFFIX,
+                    "block_template" + CONFIG_SUFFIX)
 WRAPPER = os.path.join(TOOL_DIR, "runflowgen.sh")     # shown in "what to type next" messages
 
 
@@ -745,11 +749,12 @@ def write_file(path, text, executable=False):
 
 
 def block_names():
-    """Blocks that have a config in common_files/."""
+    """Blocks that have a config in configs/ (templates not counted)."""
     if not os.path.isdir(CONFIG_DIR):
         return []
     return sorted(n[:-len(CONFIG_SUFFIX)] for n in os.listdir(CONFIG_DIR)
-                  if n.endswith(CONFIG_SUFFIX) and n != PROJECT_CONFIG)
+                  if n.endswith(CONFIG_SUFFIX) and n != PROJECT_CONFIG
+                  and n not in TEMPLATE_CONFIGS)
 
 
 def find_config(name):
@@ -767,7 +772,7 @@ def find_config(name):
 
 
 def new_block(block):
-    """Create common_files/<block>.config.tcl (and the project config if missing)."""
+    """Create configs/<block>.config.tcl (and the project config if missing)."""
     if not IDENT_RE.match(block):
         raise ConfigError("--new: \"%s\" is not a block name (letters, digits and _ only)" % block)
     block_path = os.path.join(CONFIG_DIR, block + CONFIG_SUFFIX)
@@ -802,10 +807,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("config", metavar="BLOCK", nargs="?",
-                        help="block name (reads common_files/BLOCK.config.tcl) or a path "
+                        help="block name (reads configs/BLOCK.config.tcl) or a path "
                              "to a config file")
     parser.add_argument("--new", metavar="BLOCK",
-                        help="create common_files/BLOCK.config.tcl for a new block")
+                        help="create configs/BLOCK.config.tcl for a new block")
     parser.add_argument("--force", action="store_true",
                         help="generate even if input files are missing or a .f file "
                              "list cannot be read (those errors become warnings)")
